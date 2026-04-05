@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+LOG_FORMAT = "%(asctime)s %(message)s"
+LOG_FORMAT_VERBOSE = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 
 
 @click.group()
@@ -18,7 +19,8 @@ LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
 def main(verbose: bool) -> None:
     """Dark Factory — autonomous AI coding pipeline."""
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(format=LOG_FORMAT, level=level, stream=sys.stderr)
+    fmt = LOG_FORMAT_VERBOSE if verbose else LOG_FORMAT
+    logging.basicConfig(format=fmt, level=level, stream=sys.stderr)
 
 
 @main.command()

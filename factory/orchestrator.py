@@ -53,18 +53,18 @@ async def run_job(
     # Check for resumable state
     state = load_state(repo_name, issue_number)
     if state and state.working_dir and Path(state.working_dir).exists():
-        LOG.info("Resuming job from saved state")
+        LOG.info("🔄 Resuming job from saved state")
         ctx.working_dir = state.working_dir
         ctx.branch = state.branch
         ctx.tasks = state.tasks
     else:
         state = JobState(repo_name=repo_name, issue_number=issue_number)
 
-    LOG.info("Starting job for %s#%d", repo_name, issue_number)
+    LOG.info("🏭 Starting job for %s#%d", repo_name, issue_number)
 
     # Step 1: Fetch the issue
     issue = github.fetch_issue(repo_name, issue_number)
-    LOG.info("Fetched issue: %s", issue.title)
+    LOG.info("📋 Fetched issue: %s", issue.title)
 
     # Step 2: Clone the repo and create a feature branch (if not resuming)
     if not ctx.working_dir:
@@ -77,14 +77,14 @@ async def run_job(
         save_state(state)
 
     # Step 3: Regression gate — verify existing tests pass
-    LOG.info("Running regression gate...")
+    LOG.info("🛡️ Running regression gate...")
     await run_evaluator_regression(
         working_dir=ctx.working_dir,
         model=model,
     )
     regression_fail = Path(ctx.working_dir) / "regression-fail.md"
     if regression_fail.exists():
-        LOG.error("Regression gate FAILED — existing tests are broken")
+        LOG.error("💥 Regression gate FAILED — existing tests are broken")
         raise RuntimeError(
             "Regression gate failed. Fix existing tests before adding new features. "
             f"See: {regression_fail}"
@@ -93,7 +93,7 @@ async def run_job(
 
     # Step 4: Spawn the Architect (if not resuming with tasks)
     if not ctx.tasks:
-        LOG.info("Spawning Architect...")
+        LOG.info("🏗️ Spawning Architect...")
         planner_result = await run_planner(
             issue_title=issue.title,
             issue_body=issue.body or "",
@@ -115,14 +115,14 @@ async def run_job(
         ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
         state.tasks = ctx.tasks
         save_state(state)
-        LOG.info("Created %d tasks with GitHub sub-issues", len(ctx.tasks))
+        LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
 
     # Step 5: Process tasks in dependency order
     failed_tasks: list[TaskInfo] = []
 
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
-        LOG.info("Processing batch: %s", batch_titles)
+        LOG.info("📦 Processing batch: %s", batch_titles)
 
         if len(batch) == 1:
             await _process_task(batch[0], ctx, github, model, state)
@@ -153,7 +153,7 @@ async def run_job(
                 + "\n".join(f"- [ ] {t.title}" for t in failed_tasks)
             ),
         )
-        LOG.warning("Opened draft PR #%d with %d failed tasks", pr.number, len(failed_tasks))
+        LOG.warning("📝 Opened draft PR #%d with %d failed tasks", pr.number, len(failed_tasks))
 
         # Create a needs-human issue for each failed task
         for task in failed_tasks:
@@ -196,13 +196,13 @@ async def run_job(
                 + "\n".join(f"- [x] {t.title}" for t in ctx.tasks)
             ),
         )
-        LOG.info("Opened PR #%d", pr.number)
+        LOG.info("🚀 Opened PR #%d", pr.number)
 
         github.merge_pr(repo_name, pr.number)
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
-        LOG.info("Job complete. PR #%d merged.", pr.number)
+        LOG.info("✅ Job complete. PR #%d merged.", pr.number)
 
 
 async def retry_job(
@@ -334,7 +334,7 @@ async def _process_task_with_guidance(
         )
 
         # QA reviews
-        LOG.info("    QA Engineer reviewing...")
+        LOG.info("    🔍 QA Engineer reviewing...")
         await run_evaluator_review(
             task_title=task.title,
             round_number=round_num,
@@ -401,10 +401,10 @@ async def _process_task(
     state: JobState,
 ) -> None:
     """Run the full red-green cycle for a single task."""
-    LOG.info("Task: %s", task.title)
+    LOG.info("🔧 Task: %s", task.title)
 
     # Phase 0: QA writes interface contracts
-    LOG.info("  QA Engineer writing contracts...")
+    LOG.info("  📄 QA Engineer writing contracts...")
     await run_evaluator_contracts(
         task_title=task.title,
         task_description=task.description,
@@ -414,7 +414,7 @@ async def _process_task(
     )
 
     # Phase 1: QA writes tests AND Developer scaffolds (parallel)
-    LOG.info("  QA writing tests + Developer scaffolding (parallel)...")
+    LOG.info("  ⚡ QA writing tests + Developer scaffolding (parallel)...")
     await asyncio.gather(
         run_evaluator_red(
             task_title=task.title,
@@ -433,13 +433,13 @@ async def _process_task(
 
     # Phase 2-3: Red-Green loop
     for round_num in range(1, MAX_ROUNDS + 1):
-        LOG.info("  Round %d/%d", round_num, MAX_ROUNDS)
+        LOG.info("  🔄 Round %d/%d", round_num, MAX_ROUNDS)
 
         # Remove stale artifacts
         _cleanup_artifacts(ctx.working_dir)
 
         # Developer writes code
-        LOG.info("    Developer coding...")
+        LOG.info("    💻 Developer coding...")
         await run_generator(
             task_title=task.title,
             task_description=task.description,
@@ -450,7 +450,7 @@ async def _process_task(
         )
 
         # QA reviews
-        LOG.info("    QA Engineer reviewing...")
+        LOG.info("    🔍 QA Engineer reviewing...")
         await run_evaluator_review(
             task_title=task.title,
             round_number=round_num,
@@ -463,7 +463,7 @@ async def _process_task(
         feedback_path = Path(ctx.working_dir) / "feedback.md"
 
         if approved_path.exists():
-            LOG.info("  GREEN — task approved on round %d", round_num)
+            LOG.info("  ✅ GREEN — task approved on round %d", round_num)
             task.status = "completed"
             await _commit_task(ctx, task)
             if task.issue_number:
@@ -480,7 +480,7 @@ async def _process_task(
                 f"QA Review agent crashed. Test output:\n\n```\n{test_result}\n```\n"
             )
 
-        LOG.warning("  RED — round %d failed", round_num)
+        LOG.warning("  🔴 RED — round %d failed", round_num)
 
     # Exhausted all rounds — mark as failed but don't crash
     task.status = "failed"
@@ -622,7 +622,7 @@ def _cleanup_file(working_dir: str, filename: str) -> None:
 
 async def _check_claude_cli() -> None:
     """Verify claude CLI is installed and working before starting a job."""
-    LOG.info("Running health check...")
+    LOG.info("🏥 Running health check...")
     try:
         proc = await asyncio.create_subprocess_exec(
             "claude", "-p", "Reply with OK", "--output-format", "json",
@@ -643,4 +643,4 @@ async def _check_claude_cli() -> None:
             f"Make sure you're authenticated (run 'claude' to log in)."
         )
 
-    LOG.info("Health check passed — claude CLI is working")
+    LOG.info("✅ Health check passed — claude CLI is working")

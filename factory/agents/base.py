@@ -69,12 +69,7 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     if config.allowed_tools:
         cmd.extend(["--allowedTools", ",".join(config.allowed_tools)])
 
-    LOG.info(
-        "Spawning %s agent (model=%s) in %s",
-        config.role,
-        model,
-        config.working_dir,
-    )
+    LOG.info("  🤖 Spawning %s (model=%s)", config.role, model)
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -96,11 +91,7 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     exit_code = proc.returncode or 1
     stdout_str = stdout_bytes.decode()
 
-    LOG.info(
-        "%s agent exited with code %d",
-        config.role,
-        exit_code,
-    )
+    LOG.info("  %s agent exited (code=%d)", config.role, exit_code)
 
     if exit_code != 0:
         # Parse JSON output to find the failure reason
