@@ -5,11 +5,14 @@ develop:			## Install all dependencies
 	uv sync --all-extras
 
 # ─── Testing ─────────────────────────────────────────────
-test:				## Run all tests
+test:				## Run tests (excludes slow/frontend)
+	uv run pytest tests/ -v --tb=short -m "not slow"
+
+test-all:			## Run all tests including frontend builds
 	uv run pytest tests/ -v --tb=short
 
 test-cov:			## Run tests with coverage report
-	uv run pytest tests/ -v --tb=short --cov=factory --cov-report=term-missing
+	uv run pytest tests/ -v --tb=short -m "not slow" --cov=factory --cov-report=term-missing
 
 # ─── Code Quality ────────────────────────────────────────
 check:				## Full lint suite (ruff + mypy)

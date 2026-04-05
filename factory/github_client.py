@@ -174,7 +174,7 @@ class GitHubClient:
     def create_repo(self, repo_name: str, description: str = "") -> Repository:
         """Create a new private repo under the configured owner."""
         user = self._gh.get_user()
-        return user.create_repo(
+        return user.create_repo(  # type: ignore[union-attr]
             name=repo_name,
             description=description,
             private=True,

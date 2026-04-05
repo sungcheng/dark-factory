@@ -51,6 +51,12 @@ force-single-line = true
 [tool.mypy]
 python_version = "3.11"
 strict = true
+exclude = ["factory/templates/"]
+
+[[tool.mypy.overrides]]
+module = "github.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: tests requiring npm/node (frontend builds)"]

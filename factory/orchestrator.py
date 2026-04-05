@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Generator
 from pathlib import Path
 
 from factory.agents.evaluator import run_evaluator_contracts
@@ -293,7 +294,7 @@ async def retry_job(
             repo = github.get_repo(repo_name)
             pr = repo.get_pull(state.pr_number)
             completed = [t for t in ctx.tasks if t.status == "completed"]
-            pr.edit(
+            pr.edit(  # type: ignore[call-arg]
                 title=f"feat: {repo.get_issue(issue_number).title}",
                 body=(
                     f"Closes #{issue_number}\n\n"
@@ -364,7 +365,9 @@ async def _process_task_with_guidance(
     LOG.error("Task '%s' still failing after retry.", task.title)
 
 
-def get_ready_batches(tasks: list[TaskInfo]) -> list[list[TaskInfo]]:
+def get_ready_batches(
+    tasks: list[TaskInfo],
+) -> Generator[list[TaskInfo], None, None]:
     """Yield batches of tasks whose dependencies are all complete."""
     completed: set[str] = set()
     remaining = list(tasks)
@@ -714,13 +717,22 @@ async def _run_tests_with_check(
     # QA writes tests and sometimes introduces lint errors
     # that the Developer cannot fix (test files are off-limits).
     await asyncio.create_subprocess_exec(
-        "uv", "run", "ruff", "check", "--fix", "tests/",
+        "uv",
+        "run",
+        "ruff",
+        "check",
+        "--fix",
+        "tests/",
         cwd=working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
     await asyncio.create_subprocess_exec(
-        "uv", "run", "ruff", "format", "tests/",
+        "uv",
+        "run",
+        "ruff",
+        "format",
+        "tests/",
         cwd=working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -735,15 +747,15 @@ async def _run_tests_with_check(
         stderr=asyncio.subprocess.STDOUT,
     )
     check_stdout, _ = await asyncio.wait_for(
-        check_proc.communicate(), timeout=120,
+        check_proc.communicate(),
+        timeout=120,
     )
     check_output = check_stdout.decode()[-2000:]
 
     if check_proc.returncode != 0:
         return (
             False,
-            f"Tests passed but lint/type check failed:\n"
-            f"{check_output}",
+            f"Tests passed but lint/type check failed:\n{check_output}",
         )
 
     return True, test_output

@@ -539,6 +539,7 @@ class TestAppWiring:
 # ===========================================================================
 
 
+@pytest.mark.slow
 class TestTypeScriptBuild:
     """npm run build must succeed with no TypeScript errors."""
 

@@ -154,9 +154,10 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     )
 
 
-def parse_agent_output(result: AgentResult) -> dict:
+def parse_agent_output(result: AgentResult) -> dict[str, object]:
     """Parse JSON output from Claude Code."""
     try:
-        return json.loads(result.stdout)
+        data: dict[str, object] = json.loads(result.stdout)
+        return data
     except (json.JSONDecodeError, TypeError):
         return {"raw": result.stdout}

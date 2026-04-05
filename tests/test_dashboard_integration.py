@@ -685,6 +685,7 @@ class TestEventEmitterIntegration:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 class TestFrontendBuild:
     """Verify the React/TypeScript frontend can be built for production."""
 
