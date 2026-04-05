@@ -16,6 +16,7 @@ No agent grades its own work. The Developer cannot touch test files. The QA Engi
 ## Prerequisites
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - Claude Max subscription (agents run as `claude -p` subprocesses)
 - GitHub account with a [fine-grained PAT](https://github.com/settings/tokens?type=beta) (repo permissions)
@@ -23,12 +24,15 @@ No agent grades its own work. The Developer cannot touch test files. The QA Engi
 ## Setup
 
 ```bash
+# Install uv (if you don't have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Clone the repo
 git clone https://github.com/sungcheng/dark-factory.git
 cd dark-factory
 
-# Install
-pip install -e .
+# Install dependencies
+uv sync --all-extras
 
 # Configure environment
 cp .env.example .env

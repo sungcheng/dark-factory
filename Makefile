@@ -1,19 +1,19 @@
 .PHONY: develop test check format clean
 
-develop:			## Create virtualenv with dev dependencies
-	python -m venv .venv && .venv/bin/pip install -e ".[dev]"
+develop:			## Install all dependencies
+	uv sync --all-extras
 
 test:				## Run all tests
-	pytest tests/ -v --tb=short
+	uv run pytest tests/ -v --tb=short
 
 check:				## Full lint suite
-	ruff check factory/ tests/
-	ruff format --check factory/ tests/
-	mypy factory/
+	uv run ruff check factory/ tests/
+	uv run ruff format --check factory/ tests/
+	uv run mypy factory/
 
 format:				## Auto-format
-	ruff format factory/ tests/
-	ruff check --fix factory/ tests/
+	uv run ruff format factory/ tests/
+	uv run ruff check --fix factory/ tests/
 
 clean:				## Remove build artifacts
 	rm -rf .venv __pycache__ .pytest_cache .mypy_cache dist *.egg-info
