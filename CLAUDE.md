@@ -25,26 +25,50 @@ make format         # Auto-format with ruff
 make help           # Show all commands
 ```
 
-## Python Style
+## Rules — Always Follow
 
+### Testing
+- Every new feature or module MUST have tests
+- Run `make test` before committing — all tests must pass
+- Run `make check` before committing — lint and types must be clean
+- Test edge cases: empty input, invalid input, error paths
+- Use pytest fixtures for setup/teardown
+- Aim for >80% test coverage on new code
+
+### Security
+- NEVER hardcode secrets, tokens, API keys, or passwords in code
+- All secrets come from environment variables via python-dotenv
+- NEVER log secrets — scrub sensitive data from log output
+- NEVER commit `.env` files — only `.env.example` with placeholders
+- Run `bandit -r factory/` to check for security issues when touching security-sensitive code
+- Validate all external input at system boundaries
+
+### Code Quality
+- Always validate your changes compile and pass tests before returning
+- Abstract repeated patterns into shared modules when used 3+ times
+- Keep functions small and focused — one function, one job
+- Use descriptive names — avoid abbreviations except well-known ones (URL, API, PR)
+- Handle errors explicitly — no bare `except:`, no silently swallowed exceptions
+- Log meaningful messages — include context (repo name, issue number, task id)
+
+### Python Style
 - Python 3.11+, async/await throughout
 - Formatter/linter: ruff (line-length 88)
 - Type checker: mypy (strict mode)
-- Type hints on all functions
+- Type hints on ALL functions (parameters and return types)
 - Imports: one per line, sorted by ruff isort
 - Use `from __future__ import annotations` in every module
 - Dataclasses for data containers
 - f-strings for formatting
 - Logging: `LOG = logging.getLogger(__name__)` at module level
 
-## Key Conventions
-
+### Architecture
 - Orchestrator must stay "dumb" — no AI logic, just subprocess management
 - Agents communicate through files (tasks.json, feedback.md, approved.md)
-- Never hardcode secrets — use environment variables via python-dotenv
-- Tests live in `tests/`, use pytest, prefix with `test_`
-- All async functions use `async def` / `await` — no sync subprocess calls in agents or orchestrator
+- All async functions use `async def` / `await` — no sync subprocess calls
 - Agent runners return `AgentResult` — check `.success` before proceeding
+- New features should follow existing patterns — look at how similar things are done before adding something new
+- Keep dependencies minimal — don't add a library for something the stdlib handles
 
 ## Hard Boundaries (never break these)
 
@@ -53,3 +77,4 @@ make help           # Show all commands
 - Each agent gets a fresh context window — no memory between spawns
 - Max 5 red-green rounds per task before escalating to human
 - No `git push --force`, no destructive git operations
+- No secrets in source code, logs, or commit messages
