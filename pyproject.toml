@@ -22,7 +22,7 @@ dev = [
 ]
 
 [project.scripts]
-claude-factory = "factory.cli:main"
+dark-factory = "factory.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["factory"]

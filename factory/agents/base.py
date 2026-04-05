@@ -1,14 +1,22 @@
 """Base agent runner — spawns Claude Code subprocesses."""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-import subprocess
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 
 LOG = logging.getLogger(__name__)
+
+# Default model assignments per role (cheap for coordination, powerful for coding)
+DEFAULT_MODELS: dict[str, str] = {
+    "Architect": "sonnet",
+    "QA Engineer (RED)": "sonnet",
+    "QA Engineer (Review)": "sonnet",
+    "Developer": "sonnet",
+}
 
 
 @dataclass
@@ -34,6 +42,7 @@ class AgentConfig:
     allowed_paths: list[str] = field(default_factory=list)
     working_dir: str = "."
     max_turns: int = 50
+    model: str | None = None
 
 
 def load_prompt(prompt_name: str) -> str:
@@ -42,45 +51,59 @@ def load_prompt(prompt_name: str) -> str:
     return prompt_path.read_text()
 
 
-def run_agent(config: AgentConfig) -> AgentResult:
+async def run_agent(config: AgentConfig) -> AgentResult:
     """Spawn a Claude Code subprocess with fresh context.
 
     Each agent gets its own process — no shared memory, no context bleed.
     The orchestrator controls what tools each agent can access.
     """
-    cmd = ["claude", "-p", config.prompt, "--output-format", "json"]
+    model = config.model or DEFAULT_MODELS.get(config.role, "sonnet")
+    cmd = [
+        "claude", "-p", config.prompt,
+        "--output-format", "json",
+        "--model", model,
+    ]
 
     if config.allowed_tools:
         cmd.extend(["--allowedTools", ",".join(config.allowed_tools)])
 
     LOG.info(
-        "Spawning %s agent in %s",
+        "Spawning %s agent (model=%s) in %s",
         config.role,
+        model,
         config.working_dir,
     )
 
     try:
-        result = subprocess.run(
-            cmd,
-            cwd=config.working_dir,
-            capture_output=True,
-            text=True,
+        proc = await asyncio.wait_for(
+            asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=config.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            ),
+            timeout=10,
+        )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(),
             timeout=600,  # 10 minute timeout per agent
         )
-    except subprocess.TimeoutExpired:
+    except asyncio.TimeoutError:
         LOG.error("%s agent timed out after 600s", config.role)
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
+
+    exit_code = proc.returncode or 1
 
     LOG.info(
         "%s agent exited with code %d",
         config.role,
-        result.returncode,
+        exit_code,
     )
 
     return AgentResult(
-        exit_code=result.returncode,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        exit_code=exit_code,
+        stdout=stdout_bytes.decode(),
+        stderr=stderr_bytes.decode(),
     )
 
 

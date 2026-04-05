@@ -11,11 +11,12 @@ from factory.agents.base import run_agent
 LOG = logging.getLogger(__name__)
 
 
-def run_planner(
+async def run_planner(
     issue_title: str,
     issue_body: str,
     repo_name: str,
     working_dir: str,
+    model: str | None = None,
 ) -> AgentResult:
     """Spawn the Architect agent to create tasks.json from a GitHub issue.
 
@@ -42,6 +43,7 @@ def run_planner(
         prompt=prompt,
         allowed_tools=["Read", "Write", "Glob", "Grep", "Bash"],
         working_dir=working_dir,
+        model=model,
     )
 
-    return run_agent(config)
+    return await run_agent(config)

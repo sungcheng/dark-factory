@@ -11,11 +11,12 @@ from factory.agents.base import run_agent
 LOG = logging.getLogger(__name__)
 
 
-def run_evaluator_red(
+async def run_evaluator_red(
     task_title: str,
     task_description: str,
     acceptance_criteria: list[str],
     working_dir: str,
+    model: str | None = None,
 ) -> AgentResult:
     """Spawn QA Engineer to write failing tests (RED phase).
 
@@ -45,15 +46,45 @@ def run_evaluator_red(
         prompt=prompt,
         allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
         working_dir=working_dir,
+        model=model,
     )
 
-    return run_agent(config)
+    return await run_agent(config)
 
 
-def run_evaluator_review(
+async def run_evaluator_regression(
+    working_dir: str,
+    model: str | None = None,
+) -> AgentResult:
+    """Spawn QA Engineer to run existing tests as a regression gate.
+
+    Must pass BEFORE any new work begins on a task. If existing tests
+    fail, the job stops immediately.
+    """
+    prompt = (
+        "You are the QA Engineer. Run the existing test suite with `make test`. "
+        "If there are no tests yet, write `regression-pass.md` with 'No existing tests.' "
+        "If all tests pass, write `regression-pass.md` with the test output. "
+        "If any tests FAIL, write `regression-fail.md` with the failure details. "
+        "Do NOT write any code. Do NOT modify any files except the regression report."
+    )
+
+    config = AgentConfig(
+        role="QA Engineer (Regression)",
+        prompt=prompt,
+        allowed_tools=["Read", "Write", "Bash", "Glob"],
+        working_dir=working_dir,
+        model=model,
+    )
+
+    return await run_agent(config)
+
+
+async def run_evaluator_review(
     task_title: str,
     round_number: int,
     working_dir: str,
+    model: str | None = None,
 ) -> AgentResult:
     """Spawn QA Engineer to run tests and review code (GREEN check).
 
@@ -82,6 +113,7 @@ def run_evaluator_review(
         prompt=prompt,
         allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
         working_dir=working_dir,
+        model=model,
     )
 
-    return run_agent(config)
+    return await run_agent(config)

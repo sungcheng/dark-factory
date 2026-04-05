@@ -82,3 +82,25 @@ class TestGetReadyBatches:
         """Empty task list yields no batches."""
         batches = list(get_ready_batches([]))
         assert batches == []
+
+    def test_skip_completed_tasks(self) -> None:
+        """Already-completed tasks are skipped when resuming."""
+        tasks = [
+            TaskInfo(id="t1", title="Done", description="", acceptance_criteria=[], depends_on=[], status="completed"),
+            TaskInfo(id="t2", title="Next", description="", acceptance_criteria=[], depends_on=["t1"]),
+        ]
+        batches = list(get_ready_batches(tasks))
+        assert len(batches) == 1
+        assert [t.id for t in batches[0]] == ["t2"]
+
+    def test_resume_with_mixed_status(self) -> None:
+        """Resume with some completed, some pending."""
+        tasks = [
+            TaskInfo(id="t1", title="Done1", description="", acceptance_criteria=[], depends_on=[], status="completed"),
+            TaskInfo(id="t2", title="Done2", description="", acceptance_criteria=[], depends_on=["t1"], status="completed"),
+            TaskInfo(id="t3", title="Pending", description="", acceptance_criteria=[], depends_on=["t2"]),
+            TaskInfo(id="t4", title="Also Pending", description="", acceptance_criteria=[], depends_on=["t2"]),
+        ]
+        batches = list(get_ready_batches(tasks))
+        assert len(batches) == 1
+        assert sorted(t.id for t in batches[0]) == ["t3", "t4"]

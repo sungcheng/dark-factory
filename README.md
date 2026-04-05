@@ -52,7 +52,7 @@ GITHUB_OWNER=sungcheng
 
 ```bash
 # The target repo must exist on GitHub with a main branch
-claude-factory start --repo weather-api --issue 1
+dark-factory start --repo weather-api --issue 1
 ```
 
 This will:
@@ -64,13 +64,13 @@ This will:
 ### Verbose mode
 
 ```bash
-claude-factory start --repo weather-api --issue 1 -v
+dark-factory start --repo weather-api --issue 1 -v
 ```
 
 ### Check version
 
 ```bash
-claude-factory version
+dark-factory version
 ```
 
 ## Project Structure
@@ -78,7 +78,7 @@ claude-factory version
 ```
 dark-factory/
 ├── factory/
-│   ├── cli.py              # claude-factory CLI
+│   ├── cli.py              # dark-factory CLI
 │   ├── orchestrator.py     # Main loop — task batching, red-green cycle
 │   ├── github_client.py    # GitHub API integration
 │   ├── agents/

@@ -1,10 +1,9 @@
 """Tests for agent base — config, results, prompt loading."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from factory.agents.base import AgentConfig
 from factory.agents.base import AgentResult
+from factory.agents.base import DEFAULT_MODELS
 from factory.agents.base import load_prompt
 from factory.agents.base import parse_agent_output
 
@@ -33,6 +32,29 @@ class TestAgentConfig:
         assert config.allowed_paths == []
         assert config.working_dir == "."
         assert config.max_turns == 50
+        assert config.model is None
+
+    def test_model_override(self) -> None:
+        """Model can be set explicitly."""
+        config = AgentConfig(role="test", prompt="do something", model="opus")
+        assert config.model == "opus"
+
+
+class TestDefaultModels:
+    """Tests for default model assignments."""
+
+    def test_architect_model(self) -> None:
+        """Architect uses sonnet by default."""
+        assert DEFAULT_MODELS["Architect"] == "sonnet"
+
+    def test_developer_model(self) -> None:
+        """Developer uses sonnet by default."""
+        assert DEFAULT_MODELS["Developer"] == "sonnet"
+
+    def test_all_roles_have_defaults(self) -> None:
+        """All agent roles have default models."""
+        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "Developer"}
+        assert set(DEFAULT_MODELS.keys()) == expected_roles
 
 
 class TestLoadPrompt:

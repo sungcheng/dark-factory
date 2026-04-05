@@ -11,12 +11,13 @@ from factory.agents.base import run_agent
 LOG = logging.getLogger(__name__)
 
 
-def run_generator(
+async def run_generator(
     task_title: str,
     task_description: str,
     acceptance_criteria: list[str],
     round_number: int,
     working_dir: str,
+    model: str | None = None,
 ) -> AgentResult:
     """Spawn the Developer agent to make failing tests pass.
 
@@ -30,7 +31,7 @@ def run_generator(
     feedback_note = ""
     if round_number > 1:
         feedback_note = (
-            "\n\n**IMPORTANT**: This is round {round_number}. "
+            f"\n\n**IMPORTANT**: This is round {round_number}. "
             "Read `feedback.md` for specific issues from the QA Engineer. "
             "Fix every issue mentioned. Delete `feedback.md` when done."
         )
@@ -57,6 +58,7 @@ def run_generator(
         prompt=prompt,
         allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         working_dir=working_dir,
+        model=model,
     )
 
-    return run_agent(config)
+    return await run_agent(config)
