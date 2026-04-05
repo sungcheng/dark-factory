@@ -17,6 +17,7 @@ from factory.agents.evaluator import run_evaluator_review
 from factory.agents.generator import run_generator
 from factory.agents.generator import run_generator_scaffold
 from factory.agents.planner import run_planner
+from factory.dashboard.emitter import EventEmitter
 from factory.github_client import GitHubClient
 from factory.github_client import JobContext
 from factory.github_client import TaskInfo
@@ -38,6 +39,9 @@ async def run_job(
     """Main orchestrator loop."""
     # Health check — verify claude CLI works before doing anything
     await _check_claude_cli()
+
+    emitter = EventEmitter()
+    await emitter.emit_job_started(repo_name, issue_number)
 
     github = GitHubClient()
     ctx = JobContext(repo_name=repo_name, issue_number=issue_number)
@@ -194,6 +198,7 @@ async def run_job(
     failed = [t for t in ctx.tasks if t.status == "failed"]
 
     if failed:
+        await emitter.emit_job_failed(repo_name, issue_number)
         LOG.warning(
             "⏸️ Job paused. %d/%d tasks completed, %d failed. "
             "Comment on the needs-human issues and run: "
@@ -205,6 +210,7 @@ async def run_job(
             issue_number,
         )
     else:
+        await emitter.emit_job_completed(repo_name, issue_number)
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
@@ -388,12 +394,17 @@ async def _process_task(
     github: GitHubClient,
     model: str | None,
     state: JobState,
+    emitter: EventEmitter | None = None,
 ) -> None:
     """Run the full red-green cycle for a single task."""
     LOG.info("🔧 Task: %s", task.title)
+    if emitter:
+        await emitter.emit_task_started(task.id)
 
     # Phase 0: QA writes interface contracts (haiku — fast, simple task)
     LOG.info("  📄 QA writing contracts...")
+    if emitter:
+        await emitter.emit_agent_spawned(task.id, "QA")
     await run_evaluator_contracts(
         task_title=task.title,
         task_description=task.description,
@@ -442,6 +453,10 @@ async def _process_task(
         if passed:
             # Tests pass — quick approve, no need to spawn QA agent
             LOG.info("  ✅ GREEN — all tests pass on round %d", round_num)
+            if emitter:
+                await emitter.emit_round_result(task.id, round_num, passed=True)
+                await emitter.emit_task_completed(task.id)
+                await emitter.emit_agent_exited(task.id, "Developer", success=True)
             task.status = "completed"
             await _commit_task(ctx, task)
             if task.issue_number:
@@ -465,6 +480,10 @@ async def _process_task(
         # QA might approve despite test failures (e.g., flaky tests)
         if approved_path.exists():
             LOG.info("  ✅ GREEN — QA approved on round %d", round_num)
+            if emitter:
+                await emitter.emit_round_result(task.id, round_num, passed=True)
+                await emitter.emit_task_completed(task.id)
+                await emitter.emit_agent_exited(task.id, "Developer", success=True)
             task.status = "completed"
             await _commit_task(ctx, task)
             if task.issue_number:
@@ -478,8 +497,13 @@ async def _process_task(
                 f"Test output:\n\n```\n{test_output}\n```\n"
             )
 
+        if emitter:
+            await emitter.emit_round_result(task.id, round_num, passed=False)
         LOG.warning("  🔴 RED — round %d failed", round_num)
 
+    if emitter:
+        await emitter.emit_task_failed(task.id)
+        await emitter.emit_agent_exited(task.id, "Developer", success=False)
     task.status = "failed"
     save_state(state)
     LOG.error(
