@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from factory.dashboard.db import init_db
 from factory.dashboard.routers.events import router as events_router
+from factory.dashboard.routers.jobs import router as jobs_router
 
 
 @asynccontextmanager
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     )
     api_router = APIRouter(prefix="/api/v1")
     api_router.include_router(events_router)
+    api_router.include_router(jobs_router)
     application.include_router(api_router)
     return application
 
