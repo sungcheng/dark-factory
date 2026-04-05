@@ -8,6 +8,9 @@ from factory.agents.base import AgentConfig
 from factory.agents.base import AgentResult
 from factory.agents.base import load_prompt
 from factory.agents.base import run_agent
+from factory.guardrails import detect_tech_stack
+from factory.guardrails import generate_dependency_prompt
+from factory.guardrails import generate_file_boundary_prompt
 
 LOG = logging.getLogger(__name__)
 
@@ -23,20 +26,28 @@ async def run_generator_scaffold(
     Reads contracts.md and creates the file structure, function stubs,
     types, and boilerplate. Runs in parallel with QA writing tests.
     """
+    # Inject guardrails
+    tech_stack = detect_tech_stack(working_dir)
+    guardrail_context = tech_stack.as_guardrail_prompt()
+
     prompt = (
-        "You are the Developer. Read `contracts.md` which defines the interface "
+        "You are the Developer. **First, read all existing files in `src/`** to "
+        "understand what code already exists, what patterns are used, and what you "
+        "can build on. Then read `contracts.md` which defines the interface "
         "contracts for this task — function signatures, API routes, types, and "
         "file locations.\n\n"
         "Your job is to **scaffold** the code:\n"
-        "1. Create all the files listed in contracts.md\n"
-        "2. Write function stubs with correct signatures and type hints\n"
-        "3. Create Pydantic models / dataclasses as specified\n"
-        "4. Set up API routes with placeholder implementations\n"
-        "5. Add imports and basic project wiring\n\n"
+        "1. Read existing `src/` code — do NOT duplicate or overwrite what exists\n"
+        "2. Create only NEW files listed in contracts.md that don't already exist\n"
+        "3. Write function stubs with correct signatures and type hints\n"
+        "4. Create Pydantic models / dataclasses as specified\n"
+        "5. Set up API routes with placeholder implementations\n"
+        "6. Add imports and basic project wiring\n\n"
         "Do NOT implement full business logic yet — just get the structure right "
         "so the tests have something to import. The red-green cycle will fill in "
         "the real implementation.\n\n"
         "Do NOT modify any files in `tests/`.\n\n"
+        f"{guardrail_context}\n\n"
         f"**Task**: {task_title}\n\n"
         f"**Description**: {task_description}\n"
     )
@@ -78,8 +89,20 @@ async def run_generator(
             "Fix every issue mentioned. Delete `feedback.md` when done."
         )
 
+    # Inject guardrails
+    tech_stack = detect_tech_stack(working_dir)
+    guardrail_sections = "\n\n".join(
+        s for s in [
+            tech_stack.as_guardrail_prompt(),
+            generate_file_boundary_prompt(task_title),
+            generate_dependency_prompt(working_dir),
+        ] if s
+    )
+
     prompt = (
         f"{system_prompt}\n\n"
+        f"---\n\n"
+        f"{guardrail_sections}\n\n"
         f"---\n\n"
         f"## Your Assignment\n\n"
         f"**Task**: {task_title}\n\n"

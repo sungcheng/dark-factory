@@ -100,6 +100,10 @@ Run these additional checks:
 3. Test coverage > 80% (`pytest --cov=src tests/`)
 4. Dockerfile builds successfully
 
+5. No hardcoded secrets (scan for API keys, tokens, passwords in source)
+6. No `.env` files committed (only `.env.example`)
+7. No competing frameworks introduced (check dependencies)
+
 If everything passes, write `approved.md`:
 
 ```markdown

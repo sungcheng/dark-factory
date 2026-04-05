@@ -83,7 +83,7 @@ BLOCKED_PATTERNS: list[str] = [
 ]
 
 
-def generate_security_policy() -> str:
+def generate_security_policy(tech_stack_section: str = "") -> str:
     """Generate a CLAUDE.md security section for agent working directories.
 
     This is written to the target project's CLAUDE.md so Claude Code
@@ -111,13 +111,29 @@ Never run: {blocked}
 - Never run `rm -rf` on the project root or any parent directory
 - Never use `sudo` or attempt privilege escalation
 - Never pipe output to `sh`, `bash`, or `eval`
+- Never hardcode secrets, API keys, tokens, or passwords in source code
+- Never commit `.env` files — only `.env.example` with placeholders
+- Never add a dependency that duplicates existing functionality
+- Never migrate or replace the existing tech stack
+
+### Tech Stack Guardrails
+- NEVER migrate away from existing frameworks or languages
+- NEVER rewrite existing code in a different framework without explicit approval
+- ALWAYS extend the existing tech stack rather than replacing it
+{tech_stack_section}
 """
 
 
 def write_security_policy(working_dir: str) -> None:
     """Write or append security policy to project CLAUDE.md."""
+    from factory.guardrails import detect_tech_stack
+
     claude_md = Path(working_dir) / "CLAUDE.md"
-    policy = generate_security_policy()
+
+    # Detect tech stack and include in policy
+    tech_stack = detect_tech_stack(working_dir)
+    tech_section = tech_stack.as_claude_md_section()
+    policy = generate_security_policy(tech_stack_section=tech_section)
 
     if claude_md.exists():
         existing = claude_md.read_text()

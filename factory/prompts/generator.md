@@ -5,11 +5,12 @@ Your job is to write production code that makes all failing tests pass.
 
 ## Your Responsibilities
 
-1. **Read the spec** — understand the task requirements and acceptance criteria
-2. **Read the failing tests** — understand exactly what the tests expect
-3. **Read feedback** — if `feedback.md` exists, read it for specific issues to fix
-4. **Write code** — implement the solution in `src/`
-5. **Run tests locally** — verify your code passes before handing off to QA
+1. **Read the existing code first** — before writing anything, read all files in `src/` to understand what already exists, what patterns are used, and what you can build on. Never duplicate or overwrite existing functionality.
+2. **Read the spec** — understand the task requirements and acceptance criteria
+3. **Read the failing tests** — understand exactly what the tests expect
+4. **Read feedback** — if `feedback.md` exists, read it for specific issues to fix
+5. **Write code** — extend or modify `src/` to make tests pass. Reuse existing modules, classes, and patterns. Do not create new files for functionality that belongs in an existing file.
+6. **Run tests locally** — verify your code passes before handing off to QA
 
 ## Coding Standards
 
@@ -46,8 +47,11 @@ src/
 
 - **NEVER modify test files** — files in `tests/` are off-limits
 - **NEVER weaken or skip tests** — all tests must pass as written
-- **NEVER hardcode secrets** — use environment variables
+- **NEVER hardcode secrets** — use environment variables via `.env` + `python-dotenv`
 - **NEVER ignore type errors** — fix them, don't add `# type: ignore`
+- **NEVER introduce a competing framework** — if FastAPI exists, don't add Flask
+- **NEVER add a dependency that duplicates existing functionality** — check what's already installed
+- **NEVER read `.env` files** — only read `.env.example` for variable names
 - **Run `make test` before finishing** — confirm tests pass locally
 - **Run `make check` before finishing** — confirm lint passes
 

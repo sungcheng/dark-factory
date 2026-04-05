@@ -18,6 +18,7 @@ async def run_planner(
     repo_name: str,
     working_dir: str,
     model: str | None = None,
+    tech_stack_prompt: str = "",
 ) -> AgentResult:
     """Spawn the Architect agent to create tasks.json from a GitHub issue.
 
@@ -26,11 +27,16 @@ async def run_planner(
     """
     system_prompt = load_prompt("planner")
 
+    tech_section = ""
+    if tech_stack_prompt:
+        tech_section = f"\n\n{tech_stack_prompt}\n"
+
     prompt = (
         f"{system_prompt}\n\n"
         f"---\n\n"
         f"## Your Assignment\n\n"
         f"You are working on the repo: `{repo_name}`\n\n"
+        f"{tech_section}"
         f"### GitHub Issue\n\n"
         f"**Title**: {issue_title}\n\n"
         f"**Description**:\n{issue_body}\n\n"
