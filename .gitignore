@@ -32,6 +32,9 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# SQLite databases
+*.db
+
 # PDF generation artifacts
 check_pdf.py
 check_pdf_detailed.py
