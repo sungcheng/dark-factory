@@ -221,6 +221,55 @@ def create_issue(
     click.echo(f"  https://github.com/{github.owner}/{repo}/issues/{issue.number}")
 
 
+@main.command(name="create-project")
+@click.argument("name")
+@click.option(
+    "--template",
+    "-t",
+    type=click.Choice(["fastapi"]),
+    default="fastapi",
+    help="Project template (default: fastapi)",
+)
+@click.option(
+    "--public",
+    is_flag=True,
+    default=False,
+    help="Create as public repo (default: private)",
+)
+@click.option(
+    "--description",
+    "-d",
+    default="",
+    help="Repo description",
+)
+def create_project(
+    name: str,
+    template: str,
+    public: bool,
+    description: str,
+) -> None:
+    """Create a new project repo with scaffold, CI/CD, and Dockerfile.
+
+    Examples:
+        dark-factory create-project weather-api
+        dark-factory create-project weather-api --public
+        dark-factory create-project weather-api -t fastapi -d "Weather forecast API"
+    """
+    from factory.project import create_project as _create
+
+    try:
+        url = _create(
+            name=name,
+            template=template,
+            public=public,
+            description=description,
+        )
+        click.echo(f"Project created: {url}")
+    except Exception as e:
+        click.echo(f"Failed: {e}", err=True)
+        sys.exit(1)
+
+
 @main.command()
 def version() -> None:
     """Show the Dark Factory version."""
