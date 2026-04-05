@@ -146,13 +146,15 @@ export function TaskProgress({
           />
         </div>
         <span className="text-sm text-gray-400">
-          {completedCount}/{total}
+          <span className="text-green-400">{completedCount} done</span>
+          {" · "}
+          <span className="text-blue-400">{total - completedCount} remaining</span>
         </span>
         <button
           onClick={() => setShowCompleted(!showCompleted)}
           className="text-xs text-gray-500 hover:text-gray-300 ml-2 whitespace-nowrap"
         >
-          {showCompleted ? "Hide completed" : `Show all (${completedCount} done)`}
+          {showCompleted ? "Hide completed" : "Show all"}
         </button>
       </div>
       <ul className="space-y-2">
