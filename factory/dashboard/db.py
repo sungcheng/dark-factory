@@ -78,3 +78,41 @@ async def insert_event(event_in: EventIn) -> EventOut:
         message=event_in.message,
         timestamp=timestamp,
     )
+
+
+async def fetch_events_for_job(task_ids: list[str]) -> list[EventOut]:
+    """Fetch all events for given task IDs, ordered by timestamp ascending.
+
+    Args:
+        task_ids: List of task IDs to fetch events for
+
+    Returns:
+        List of EventOut, ordered by timestamp ascending
+    """
+    if not task_ids:
+        return []
+
+    placeholders = ",".join("?" for _ in task_ids)
+    query = f"""\
+        SELECT id, task_id, event_type, status, message, timestamp
+        FROM events
+        WHERE task_id IN ({placeholders})
+        ORDER BY timestamp ASC
+    """
+
+    async with aiosqlite.connect(DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(query, task_ids) as cursor:
+            rows = await cursor.fetchall()
+
+    return [
+        EventOut(
+            id=row["id"],
+            task_id=row["task_id"],
+            event_type=row["event_type"],
+            status=row["status"],
+            message=row["message"],
+            timestamp=datetime.fromisoformat(row["timestamp"]),
+        )
+        for row in rows
+    ]

@@ -26,3 +26,46 @@ class EventOut(BaseModel):
     timestamp: datetime  # ISO 8601, server-generated, UTC
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TaskOut(BaseModel):
+    """Task returned from job detail endpoint."""
+
+    id: str
+    title: str
+    description: str
+    status: str  # "pending", "success", "failure", "in_progress"
+    issue_number: int | None = None
+    failure_issue: int | None = None
+    acceptance_criteria: list[str]
+    depends_on: list[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JobSummary(BaseModel):
+    """Job summary returned from GET /api/v1/jobs."""
+
+    job_id: str  # {repo_name}#{issue_number}
+    repo_name: str
+    issue_number: int
+    status: str  # "in_progress", "completed"
+    task_count: int
+    completed_task_count: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JobDetail(BaseModel):
+    """Full job details returned from GET /api/v1/jobs/{job_id}."""
+
+    job_id: str  # {repo_name}#{issue_number}
+    repo_name: str
+    issue_number: int
+    status: str  # "in_progress", "completed"
+    working_dir: str
+    branch: str
+    pr_number: int | None = None
+    tasks: list[TaskOut]
+
+    model_config = ConfigDict(from_attributes=True)
