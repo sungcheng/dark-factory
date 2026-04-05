@@ -81,12 +81,16 @@ async def run_agent(config: AgentConfig) -> AgentResult:
 
     LOG.info("  🤖 Spawning %s (model=%s)", config.role, model)
 
+    import os
+    import signal
+
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=config.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=None,  # Let stderr stream to terminal for visibility
+            start_new_session=True,  # Create process group for clean cleanup
         )
         timeout = DEFAULT_TIMEOUTS.get(config.role, 1200)
         stdout_bytes, _ = await asyncio.wait_for(
@@ -95,9 +99,14 @@ async def run_agent(config: AgentConfig) -> AgentResult:
         )
     except asyncio.TimeoutError:
         timeout = DEFAULT_TIMEOUTS.get(config.role, 1200)
-        LOG.error("%s agent timed out after %ds — killing process", config.role, timeout)
-        proc.kill()
-        await proc.wait()
+        LOG.error("%s agent timed out after %ds — killing process group", config.role, timeout)
+        # Kill the entire process group (agent + all child processes like pytest)
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            await asyncio.sleep(2)
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
 
     exit_code = proc.returncode or 1
