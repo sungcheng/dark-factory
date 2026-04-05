@@ -141,7 +141,8 @@ async def run_job(
             await _process_task(task, ctx, github, model, state)
 
             if task.status == "completed":
-                # Push, open PR, merge
+                # Pull latest main before pushing to avoid conflicts
+                await _pull_latest(ctx)
                 await _push_branch(ctx, task_branch)
                 pr = github.create_pr(
                     repo_name=repo_name,
@@ -211,15 +212,32 @@ async def run_job(
             issue_number,
         )
     else:
-        await emitter.emit_job_completed(repo_name, issue_number)
-        github.close_issue(repo_name, issue_number)
-        state.status = "completed"
-        save_state(state)
-        LOG.info(
-            "✅ All %d tasks complete. Issue #%d closed.",
-            len(completed),
-            issue_number,
+        # Post-merge validation — pull final main, run full check
+        LOG.info("🔍 Running post-merge validation...")
+        await _checkout_main(ctx)
+        await _pull_latest(ctx)
+        validation_ok = await _post_merge_validation(
+            ctx,
+            model,
         )
+        if validation_ok:
+            await emitter.emit_job_completed(repo_name, issue_number)
+            github.close_issue(repo_name, issue_number)
+            state.status = "completed"
+            save_state(state)
+            LOG.info(
+                "✅ All %d tasks complete. Post-merge validation "
+                "passed. Issue #%d closed.",
+                len(completed),
+                issue_number,
+            )
+        else:
+            await emitter.emit_job_failed(repo_name, issue_number)
+            LOG.warning(
+                "⚠️ All tasks merged but post-merge validation "
+                "failed. Issue #%d left open for manual review.",
+                issue_number,
+            )
 
 
 async def retry_job(
@@ -553,6 +571,79 @@ def _read_feedback(working_dir: str) -> str:
     if path.exists():
         return path.read_text()
     return "No feedback file found."
+
+
+async def _post_merge_validation(
+    ctx: JobContext,
+    model: str | None = None,
+    max_fix_attempts: int = 2,
+) -> bool:
+    """Run make test + make check on final merged main.
+
+    If validation fails, spawn Developer to fix cross-task issues
+    (missing deps, import errors, lint). Commits fixes directly
+    to main.
+    """
+    for attempt in range(1, max_fix_attempts + 1):
+        passed, output = await _run_tests_with_check(ctx.working_dir)
+        if passed:
+            if attempt > 1:
+                LOG.info(
+                    "🩹 Post-merge self-healed after %d attempt(s)",
+                    attempt - 1,
+                )
+            return True
+
+        if attempt < max_fix_attempts:
+            LOG.warning(
+                "🩹 Post-merge validation failed — "
+                "spawning Developer to fix (attempt %d/%d)",
+                attempt,
+                max_fix_attempts - 1,
+            )
+            await run_generator(
+                task_title="Fix post-merge validation failures",
+                task_description=(
+                    "All tasks were merged but the final "
+                    "make test + make check fails. "
+                    "Fix the issues below. You MAY edit any "
+                    "file — tests, source, config, deps.\n\n"
+                    f"## Failure Output\n\n```\n{output}\n```"
+                ),
+                acceptance_criteria=[
+                    "make test passes",
+                    "make check passes",
+                ],
+                round_number=1,
+                working_dir=ctx.working_dir,
+                model=model,
+            )
+            # Commit and push the fix
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "add",
+                "-A",
+                cwd=ctx.working_dir,
+            )
+            await proc.wait()
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "commit",
+                "-m",
+                "fix: post-merge validation — auto-heal",
+                "--allow-empty",
+                cwd=ctx.working_dir,
+            )
+            await proc.wait()
+            await _push_changes(ctx)
+        else:
+            LOG.error(
+                "💥 Post-merge validation still failing after %d fix attempt(s)",
+                max_fix_attempts - 1,
+            )
+            return False
+
+    return False
 
 
 def _is_simple_issue(title: str, body: str) -> bool:
