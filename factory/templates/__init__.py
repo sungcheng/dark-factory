@@ -1,4 +1,5 @@
 """Project templates — pre-built scaffolds for common patterns."""
+
 from __future__ import annotations
 
 import logging

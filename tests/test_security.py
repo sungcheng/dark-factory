@@ -1,4 +1,5 @@
 """Tests for security hooks."""
+
 from __future__ import annotations
 
 import tempfile

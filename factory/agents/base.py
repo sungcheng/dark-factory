@@ -1,4 +1,5 @@
 """Base agent runner — spawns Claude Code subprocesses."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,12 +23,12 @@ DEFAULT_MODELS: dict[str, str] = {
 
 # Timeout per role in seconds
 DEFAULT_TIMEOUTS: dict[str, int] = {
-    "Architect": 1200,            # 20 min
-    "Developer": 1800,            # 30 min — heaviest work
-    "QA Engineer (RED)": 1200,    # 20 min
+    "Architect": 1200,  # 20 min
+    "Developer": 1800,  # 30 min — heaviest work
+    "QA Engineer (RED)": 1200,  # 20 min
     "QA Engineer (Review)": 600,  # 10 min
     "QA Engineer (Contracts)": 300,  # 5 min
-    "QA Engineer (Regression)": 300, # 5 min
+    "QA Engineer (Regression)": 300,  # 5 min
 }
 
 
@@ -71,9 +72,13 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     """
     model = config.model or DEFAULT_MODELS.get(config.role, "sonnet")
     cmd = [
-        "claude", "-p", config.prompt,
-        "--output-format", "json",
-        "--model", model,
+        "claude",
+        "-p",
+        config.prompt,
+        "--output-format",
+        "json",
+        "--model",
+        model,
     ]
 
     if config.allowed_tools:

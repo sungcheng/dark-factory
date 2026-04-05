@@ -1,4 +1,5 @@
 """Tests for agent base — config, results, prompt loading."""
+
 from __future__ import annotations
 
 from factory.agents.base import DEFAULT_MODELS

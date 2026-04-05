@@ -1,4 +1,5 @@
 """GitHub API client — issues, repos, PRs."""
+
 from __future__ import annotations
 
 import os
@@ -168,10 +169,7 @@ class GitHubClient:
         """Find all needs-human issues linked to a parent issue."""
         repo = self.get_repo(repo_name)
         issues = repo.get_issues(state="open", labels=["needs-human"])
-        return [
-            i for i in issues
-            if f"#{parent_issue}" in (i.body or "")
-        ]
+        return [i for i in issues if f"#{parent_issue}" in (i.body or "")]
 
     def create_repo(self, repo_name: str, description: str = "") -> Repository:
         """Create a new private repo under the configured owner."""

@@ -1,4 +1,5 @@
 """Session state persistence — resume crashed jobs."""
+
 from __future__ import annotations
 
 import json

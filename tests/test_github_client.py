@@ -1,4 +1,5 @@
 """Tests for GitHub client data models."""
+
 from __future__ import annotations
 
 from factory.github_client import JobContext
@@ -63,8 +64,11 @@ class TestJobContext:
         ctx2 = JobContext(repo_name="b", issue_number=2)
         ctx1.tasks.append(
             TaskInfo(
-                id="t1", title="X", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="X",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             )
         )
         assert len(ctx2.tasks) == 0

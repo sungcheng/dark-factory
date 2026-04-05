@@ -2,6 +2,7 @@
 
 No AI here. Just subprocess management, task ordering, and GitHub integration.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -86,7 +87,8 @@ async def run_job(
                         line.lstrip("- ").lstrip("* ").strip()
                         for line in (issue.body or "").split("\n")
                         if line.strip().startswith(("- ", "* "))
-                    ] or [issue.title],
+                    ]
+                    or [issue.title],
                     depends_on=[],
                 ),
             ]
@@ -108,9 +110,8 @@ async def run_job(
                 raise RuntimeError("Architect agent failed")
             if not planner_result.success:
                 LOG.warning(
-                "Architect exited with error but "
-                "tasks.json exists — continuing"
-            )
+                    "Architect exited with error but tasks.json exists — continuing"
+                )
 
             ctx.tasks = _load_tasks(ctx.working_dir)
             ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
@@ -253,8 +254,7 @@ async def retry_job(
                 LOG.info("Found human guidance for task '%s'", task.title)
             else:
                 LOG.warning(
-                    "No comments on failure issue #%d"
-                    " — retrying without guidance",
+                    "No comments on failure issue #%d — retrying without guidance",
                     task.failure_issue,
                 )
 
@@ -349,8 +349,7 @@ async def _process_task_with_guidance(
         # Tests failed — write feedback directly instead of spawning QA
         feedback_path = Path(ctx.working_dir) / "feedback.md"
         feedback_path.write_text(
-            f"# Feedback — Retry Round {round_num}\n\n"
-            f"```\n{test_output}\n```\n"
+            f"# Feedback — Retry Round {round_num}\n\n```\n{test_output}\n```\n"
         )
         LOG.warning("  🔴 RED — retry round %d failed", round_num)
 
@@ -370,17 +369,11 @@ def get_ready_batches(tasks: list[TaskInfo]) -> list[list[TaskInfo]]:
             remaining.remove(t)
 
     while remaining:
-        batch = [
-            t
-            for t in remaining
-            if all(d in completed for d in t.depends_on)
-        ]
+        batch = [t for t in remaining if all(d in completed for d in t.depends_on)]
 
         if not batch:
             pending_ids = [t.id for t in remaining]
-            raise RuntimeError(
-                f"Deadlock: no tasks ready. Remaining: {pending_ids}"
-            )
+            raise RuntimeError(f"Deadlock: no tasks ready. Remaining: {pending_ids}")
 
         yield batch
 
@@ -504,10 +497,7 @@ async def _process_batch_parallel(
     state: JobState,
 ) -> None:
     """Process a batch of independent tasks in parallel."""
-    coros = [
-        _process_task(task, ctx, github, model, state)
-        for task in batch
-    ]
+    coros = [_process_task(task, ctx, github, model, state) for task in batch]
     await asyncio.gather(*coros)
 
 
@@ -515,9 +505,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
     """Load tasks.json written by the Architect."""
     tasks_path = Path(working_dir) / "tasks.json"
     if not tasks_path.exists():
-        raise FileNotFoundError(
-            f"Architect didn't create tasks.json in {working_dir}"
-        )
+        raise FileNotFoundError(f"Architect didn't create tasks.json in {working_dir}")
 
     raw = json.loads(tasks_path.read_text())
     return [
@@ -547,8 +535,14 @@ def _is_simple_issue(title: str, body: str) -> bool:
     small features that don't need task decomposition.
     """
     simple_keywords = [
-        "fix", "bug", "typo", "rename", "update",
-        "add endpoint", "remove", "bump",
+        "fix",
+        "bug",
+        "typo",
+        "rename",
+        "update",
+        "add endpoint",
+        "remove",
+        "bump",
     ]
     text = f"{title} {body}".lower()
 
@@ -585,9 +579,7 @@ async def _regression_gate_with_healing(
             working_dir=ctx.working_dir,
             model="haiku",
         )
-        regression_fail = (
-            Path(ctx.working_dir) / "regression-fail.md"
-        )
+        regression_fail = Path(ctx.working_dir) / "regression-fail.md"
         if not regression_fail.exists():
             _cleanup_file(ctx.working_dir, "regression-pass.md")
             if attempt > 1:
@@ -625,20 +617,23 @@ async def _regression_gate_with_healing(
             )
             # Commit the fix
             proc = await asyncio.create_subprocess_exec(
-                "git", "add", "-A",
+                "git",
+                "add",
+                "-A",
                 cwd=ctx.working_dir,
             )
             await proc.wait()
             proc = await asyncio.create_subprocess_exec(
-                "git", "commit", "-m",
+                "git",
+                "commit",
+                "-m",
                 "fix: self-heal broken regression tests",
                 cwd=ctx.working_dir,
             )
             await proc.wait()
         else:
             LOG.error(
-                "💥 Regression gate FAILED after "
-                "%d heal attempt(s)",
+                "💥 Regression gate FAILED after %d heal attempt(s)",
                 max_heal_attempts - 1,
             )
             raise RuntimeError(
@@ -663,7 +658,12 @@ async def _run_tests_with_check(
         test_path = Path(working_dir) / test_file
         if test_path.exists():
             proc = await asyncio.create_subprocess_exec(
-                "uv", "run", "pytest", test_file, "-v", "--tb=short",
+                "uv",
+                "run",
+                "pytest",
+                test_file,
+                "-v",
+                "--tb=short",
                 cwd=working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -674,7 +674,8 @@ async def _run_tests_with_check(
 
     # Run full test suite
     test_proc = await asyncio.create_subprocess_exec(
-        "make", "test",
+        "make",
+        "test",
         cwd=working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -687,7 +688,8 @@ async def _run_tests_with_check(
 
     # Run check (lint + types)
     check_proc = await asyncio.create_subprocess_exec(
-        "make", "check",
+        "make",
+        "check",
         cwd=working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -709,7 +711,10 @@ async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
     clone_url = f"https://{github.token}@github.com/{github.owner}/{ctx.repo_name}.git"
 
     proc = await asyncio.create_subprocess_exec(
-        "git", "clone", clone_url, work_dir,
+        "git",
+        "clone",
+        clone_url,
+        work_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -724,7 +729,9 @@ async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
 async def _checkout_main(ctx: JobContext) -> None:
     """Switch back to main branch."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "checkout", "main",
+        "git",
+        "checkout",
+        "main",
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -735,7 +742,10 @@ async def _checkout_main(ctx: JobContext) -> None:
 async def _pull_latest(ctx: JobContext) -> None:
     """Pull latest changes from origin main."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "pull", "origin", "main",
+        "git",
+        "pull",
+        "origin",
+        "main",
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -746,7 +756,10 @@ async def _pull_latest(ctx: JobContext) -> None:
 async def _create_branch_from(ctx: JobContext, branch_name: str) -> None:
     """Create and checkout a new branch from current HEAD."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "checkout", "-b", branch_name,
+        "git",
+        "checkout",
+        "-b",
+        branch_name,
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -757,7 +770,11 @@ async def _create_branch_from(ctx: JobContext, branch_name: str) -> None:
 async def _push_branch(ctx: JobContext, branch_name: str) -> None:
     """Push a specific branch to origin."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "push", "-u", "origin", branch_name,
+        "git",
+        "push",
+        "-u",
+        "origin",
+        branch_name,
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -768,7 +785,9 @@ async def _push_branch(ctx: JobContext, branch_name: str) -> None:
 async def _commit_task(ctx: JobContext, task: TaskInfo) -> None:
     """Commit all changes for a completed task."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "add", "-A",
+        "git",
+        "add",
+        "-A",
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -776,7 +795,10 @@ async def _commit_task(ctx: JobContext, task: TaskInfo) -> None:
     await proc.communicate()
 
     proc = await asyncio.create_subprocess_exec(
-        "git", "commit", "-m", f"feat: {task.title}\n\nTask: {task.id}",
+        "git",
+        "commit",
+        "-m",
+        f"feat: {task.title}\n\nTask: {task.id}",
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -787,7 +809,11 @@ async def _commit_task(ctx: JobContext, task: TaskInfo) -> None:
 async def _push_changes(ctx: JobContext) -> None:
     """Push the feature branch to origin."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "push", "-u", "origin", ctx.branch,
+        "git",
+        "push",
+        "-u",
+        "origin",
+        ctx.branch,
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -813,7 +839,11 @@ async def _check_claude_cli() -> None:
     LOG.info("🏥 Running health check...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "claude", "-p", "Reply with OK", "--output-format", "json",
+            "claude",
+            "-p",
+            "Reply with OK",
+            "--output-format",
+            "json",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

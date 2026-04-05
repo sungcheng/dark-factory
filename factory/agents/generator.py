@@ -1,4 +1,5 @@
 """Generator agent — spawns the Developer to write code."""
+
 from __future__ import annotations
 
 import logging
@@ -92,7 +93,8 @@ async def run_generator(
             f"A human reviewed the previous failure and provided this guidance:\n\n"
             f"{human_guidance}\n\n"
             f"---\n\n"
-            if human_guidance else ""
+            if human_guidance
+            else ""
         )
         + "1. Read the failing tests in `tests/`\n"
         "2. Write code in `src/` to make all tests pass\n"

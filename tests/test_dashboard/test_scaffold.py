@@ -1,11 +1,11 @@
 """Tests for dashboard scaffold: package structure, FastAPI app, and config files."""
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
 import pytest
-
 
 # Project root is two levels up from this test file
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -32,7 +32,10 @@ class TestPackageStructure:
 
     def test_dashboard_routers_init_exists(self) -> None:
         """factory/dashboard/routers/__init__.py must exist."""
-        assert (PROJECT_ROOT / "factory" / "dashboard" / "routers" / "__init__.py").is_file()
+        routers_init = (
+            PROJECT_ROOT / "factory" / "dashboard" / "routers" / "__init__.py"
+        )
+        assert routers_init.is_file()
 
     def test_dashboard_frontend_dir_exists(self) -> None:
         """dashboard/frontend/ directory must exist at project root."""
@@ -52,15 +55,17 @@ class TestFastAPIApp:
 
     def test_app_instance_exists(self) -> None:
         """factory.dashboard.app must expose an `app` FastAPI instance."""
-        from factory.dashboard.app import app
         from fastapi import FastAPI
+
+        from factory.dashboard.app import app
 
         assert isinstance(app, FastAPI)
 
     def test_create_app_returns_fastapi(self) -> None:
         """create_app() must return a FastAPI instance."""
-        from factory.dashboard.app import create_app
         from fastapi import FastAPI
+
+        from factory.dashboard.app import create_app
 
         result = create_app()
         assert isinstance(result, FastAPI)
@@ -70,17 +75,14 @@ class TestFastAPIApp:
         from factory.dashboard.app import app
 
         # Collect all route prefixes from included routers
-        prefixes = [
-            route.path
-            for route in app.routes
-            if hasattr(route, "path")
-        ]
+        prefixes = [route.path for route in app.routes if hasattr(route, "path")]
         # At minimum the router mount must mean /api/v1 appears in routes
         # (docs/openapi are at root; api routes will be under /api/v1/...)
         # We verify the router was registered by checking that routes
         # outside /docs /openapi still only live under /api/v1.
         non_meta_paths = [
-            p for p in prefixes
+            p
+            for p in prefixes
             if not p.startswith("/docs")
             and not p.startswith("/openapi")
             and not p.startswith("/redoc")
@@ -93,8 +95,9 @@ class TestFastAPIApp:
 
     def test_app_responds_via_test_client(self) -> None:
         """TestClient must be able to make requests to the app (requires httpx)."""
-        from factory.dashboard.app import app
         from fastapi.testclient import TestClient
+
+        from factory.dashboard.app import app
 
         client = TestClient(app)
         # /docs should return 200
@@ -103,8 +106,9 @@ class TestFastAPIApp:
 
     def test_unknown_route_returns_404(self) -> None:
         """Unknown routes must return 404."""
-        from factory.dashboard.app import app
         from fastapi.testclient import TestClient
+
+        from factory.dashboard.app import app
 
         client = TestClient(app)
         response = client.get("/api/v1/nonexistent-endpoint")
@@ -112,8 +116,9 @@ class TestFastAPIApp:
 
     def test_root_route_not_defined(self) -> None:
         """Root / should not return 200 (no handler registered there)."""
-        from factory.dashboard.app import app
         from fastapi.testclient import TestClient
+
+        from factory.dashboard.app import app
 
         client = TestClient(app)
         response = client.get("/")
@@ -148,7 +153,8 @@ class TestPyprojectDependencies:
     def test_httpx_in_dev_dependencies(self, pyproject_text: str) -> None:
         """pyproject.toml dev extras must include httpx for TestClient support."""
         assert re.search(r'^\s*"httpx', pyproject_text, re.MULTILINE), (
-            "httpx not found in pyproject.toml dev dependencies (required for FastAPI TestClient)"
+            "httpx not found in pyproject.toml dev dependencies "
+            "(required for FastAPI TestClient)"
         )
 
 
@@ -172,11 +178,9 @@ class TestMakefileTargets:
         )
 
     def test_dashboard_target_runs_uvicorn(self, makefile_text: str) -> None:
-        """dashboard target must invoke uvicorn pointing at factory.dashboard.app:app."""
+        """dashboard target must invoke uvicorn at factory.dashboard.app:app."""
         # Find the dashboard target block
-        match = re.search(
-            r"^dashboard:.*\n((?:\t.+\n)*)", makefile_text, re.MULTILINE
-        )
+        match = re.search(r"^dashboard:.*\n((?:\t.+\n)*)", makefile_text, re.MULTILINE)
         assert match, "dashboard target not found"
         body = match.group(1)
         assert "uvicorn" in body, "dashboard target must run uvicorn"
