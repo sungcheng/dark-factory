@@ -84,11 +84,13 @@ def retry(repo: str, issue: int, model: str | None) -> None:
     default=None,
     help="Override model for all agents",
 )
-def run(repo: str, model: str | None) -> None:
-    """Process all open issues in a repo, ordered by issue number.
+@click.option("--sequential", "-s", is_flag=True, help="Process issues one at a time instead of in parallel")
+def run(repo: str, model: str | None, sequential: bool) -> None:
+    """Process all open issues in a repo (parallel by default).
 
-    Example:
+    Examples:
         dark-factory run --repo weather-api
+        dark-factory run --repo weather-api --sequential
     """
     from factory.github_client import GitHubClient
     from factory.orchestrator import run_job
@@ -104,17 +106,33 @@ def run(repo: str, model: str | None) -> None:
         click.echo(f"No open issues in {repo}")
         return
 
-    click.echo(f"Found {len(open_issues)} open issue(s) in {repo}:")
+    mode = "sequentially" if sequential else "in parallel"
+    click.echo(f"Found {len(open_issues)} open issue(s) in {repo} — processing {mode}:")
     for issue in open_issues:
         click.echo(f"  #{issue.number}: {issue.title}")
 
-    for issue in open_issues:
-        click.echo(f"\nProcessing #{issue.number}: {issue.title}")
-        try:
-            asyncio.run(run_job(repo_name=repo, issue_number=issue.number, model=model))
-            click.echo(f"  #{issue.number} completed.")
-        except Exception as e:
-            click.echo(f"  #{issue.number} failed: {e}", err=True)
+    if sequential:
+        for issue in open_issues:
+            click.echo(f"\nProcessing #{issue.number}: {issue.title}")
+            try:
+                asyncio.run(run_job(repo_name=repo, issue_number=issue.number, model=model))
+                click.echo(f"  #{issue.number} completed.")
+            except Exception as e:
+                click.echo(f"  #{issue.number} failed: {e}", err=True)
+    else:
+        async def run_all() -> None:
+            results = await asyncio.gather(
+                *[run_job(repo_name=repo, issue_number=i.number, model=model)
+                  for i in open_issues],
+                return_exceptions=True,
+            )
+            for issue, result in zip(open_issues, results):
+                if isinstance(result, Exception):
+                    click.echo(f"  #{issue.number} failed: {result}", err=True)
+                else:
+                    click.echo(f"  #{issue.number} completed.")
+
+        asyncio.run(run_all())
 
 
 @main.command()
