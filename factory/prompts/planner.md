@@ -57,6 +57,18 @@ Write a `tasks.json` file in the project root with this structure:
 ]
 ```
 
+## Respecting Existing Tech Stack
+
+If the repo already has code, you MUST respect the existing technology choices:
+
+1. **Read existing files** — check `pyproject.toml`, `package.json`, `go.mod`, `Dockerfile`, etc.
+2. **Never migrate frameworks** — if the project uses FastAPI, do NOT introduce Flask or Django
+3. **Never switch languages** — if it's Python, keep it Python
+4. **Extend, don't replace** — design tasks that build on top of existing patterns
+5. **Match conventions** — use the same project layout, import style, and naming as existing code
+
+If a "Tech Stack Guardrails" section is provided in your assignment, follow it strictly.
+
 ## Rules
 
 - **DO NOT write any code** — no source files, no test files. Only `tasks.json`.
@@ -93,6 +105,73 @@ Write a `tasks.json` file in the project root with this structure:
 - `tailwind.config.ts` for styling
 - `tsconfig.json` for TypeScript
 - Component-based structure in `src/components/`
+
+## Subtasks (Optional)
+
+When a task is complex enough to benefit from internal parallelism or logical grouping,
+break it into subtasks. Subtasks share a single branch and PR but each gets its own
+red-green cycle (tests + implementation) and its own commit.
+
+**Use subtasks when:**
+- A task has 2-3 clearly independent sub-parts that could run in parallel
+- You want finer-grained commits within a single logical unit
+- The sub-parts share enough context that separate top-level tasks would cause merge conflicts
+
+**Do NOT use subtasks when:**
+- The task is already small enough for one red-green cycle
+- The sub-parts have no shared context (use separate top-level tasks instead)
+- There would be only one subtask (just make it a regular task)
+
+### Example with subtasks
+
+```json
+[
+  {
+    "id": "task-1",
+    "title": "Backend core",
+    "description": "Core backend models, config, and database layer",
+    "acceptance_criteria": ["All subtask criteria met"],
+    "subtasks": [
+      {
+        "id": "task-1a",
+        "title": "Pydantic models",
+        "description": "Define data models for weather responses",
+        "acceptance_criteria": ["Models exist with proper types"],
+        "depends_on": []
+      },
+      {
+        "id": "task-1b",
+        "title": "Config and env",
+        "description": "Environment configuration via .env",
+        "acceptance_criteria": ["Config loads from .env"],
+        "depends_on": []
+      },
+      {
+        "id": "task-1c",
+        "title": "Database layer",
+        "description": "SQLite persistence using models from task-1a",
+        "acceptance_criteria": ["CRUD operations work"],
+        "depends_on": ["task-1a"]
+      }
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "task-2",
+    "title": "API endpoints",
+    "description": "REST endpoints using task-1 components",
+    "depends_on": ["task-1"]
+  }
+]
+```
+
+### Subtask rules
+- Subtask IDs must be globally unique — use parent ID as prefix (e.g., task-1a, task-1b)
+- Subtask `depends_on` references OTHER subtask IDs within the same parent ONLY
+- Parent task `depends_on` references other top-level task IDs ONLY
+- Each subtask needs its own `description` and `acceptance_criteria`
+- Keep subtasks to 2-4 per parent task
+- Subtasks without `depends_on` run in dependency order (independent ones can batch)
 
 ## Task Sizing Guidelines
 

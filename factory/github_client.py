@@ -13,6 +13,19 @@ from github.Repository import Repository
 
 
 @dataclass
+class SubTaskInfo:
+    """A subtask within a parent task."""
+
+    id: str
+    title: str
+    description: str
+    acceptance_criteria: list[str]
+    depends_on: list[str]
+    status: str = "pending"
+    failure_issue: int | None = None
+
+
+@dataclass
 class TaskInfo:
     """A task parsed from tasks.json with its GitHub issue number."""
 
@@ -21,9 +34,25 @@ class TaskInfo:
     description: str
     acceptance_criteria: list[str]
     depends_on: list[str]
+    subtasks: list[SubTaskInfo] = field(default_factory=list)
     issue_number: int | None = None
     status: str = "pending"
     failure_issue: int | None = None
+
+    @property
+    def has_subtasks(self) -> bool:
+        """Return True if this task has subtasks."""
+        return bool(self.subtasks)
+
+    @property
+    def all_subtasks_completed(self) -> bool:
+        """Return True if all subtasks are completed."""
+        return all(s.status == "completed" for s in self.subtasks)
+
+    @property
+    def any_subtask_failed(self) -> bool:
+        """Return True if any subtask has failed."""
+        return any(s.status == "failed" for s in self.subtasks)
 
 
 class GitHubClient:

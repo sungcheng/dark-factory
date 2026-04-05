@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
 
+from factory.github_client import SubTaskInfo
 from factory.github_client import TaskInfo
 
 LOG = logging.getLogger(__name__)
@@ -76,6 +77,18 @@ def load_state(repo_name: str, issue_number: int) -> JobState | None:
             description=t["description"],
             acceptance_criteria=t.get("acceptance_criteria", []),
             depends_on=t.get("depends_on", []),
+            subtasks=[
+                SubTaskInfo(
+                    id=s["id"],
+                    title=s["title"],
+                    description=s.get("description", ""),
+                    acceptance_criteria=s.get("acceptance_criteria", []),
+                    depends_on=s.get("depends_on", []),
+                    status=s.get("status", "pending"),
+                    failure_issue=s.get("failure_issue"),
+                )
+                for s in t.get("subtasks", [])
+            ],
             issue_number=t.get("issue_number"),
             status=t.get("status", "pending"),
             failure_issue=t.get("failure_issue"),

@@ -21,7 +21,13 @@ from factory.agents.planner import run_planner
 from factory.dashboard.emitter import EventEmitter
 from factory.github_client import GitHubClient
 from factory.github_client import JobContext
+from factory.github_client import SubTaskInfo
 from factory.github_client import TaskInfo
+from factory.guardrails import check_regression_scope
+from factory.guardrails import count_tests
+from factory.guardrails import format_secret_findings
+from factory.guardrails import run_preflight_checks
+from factory.guardrails import verify_test_count_not_decreased
 from factory.security import write_security_policy
 from factory.state import JobState
 from factory.state import load_state
@@ -73,6 +79,27 @@ async def run_job(
         state.working_dir = ctx.working_dir
         save_state(state)
 
+    # Step 2.5: Pre-flight guardrail checks
+    preflight = run_preflight_checks(ctx.working_dir)
+    if not preflight.passed:
+        for reason in preflight.blocking_reasons:
+            LOG.error("🚫 Guardrail: %s", reason)
+        if preflight.secret_findings:
+            LOG.error(
+                "Secret scan report:\n%s",
+                format_secret_findings(preflight.secret_findings),
+            )
+        raise RuntimeError(
+            "Pre-flight guardrail checks failed. "
+            "Fix the issues above before running the factory."
+        )
+
+    tech_stack = preflight.tech_stack
+    LOG.info("🔍 Tech stack: %s", tech_stack.summary())
+
+    # Count tests before any changes (for regression scope guard)
+    pre_job_test_count = await count_tests(ctx.working_dir)
+
     # Step 3: Regression gate — skip on first task (nothing to regress)
     has_existing_tests = await _has_tests(ctx.working_dir)
     if has_existing_tests:
@@ -109,6 +136,7 @@ async def run_job(
                 repo_name=repo_name,
                 working_dir=ctx.working_dir,
                 model=model,
+                tech_stack_prompt=tech_stack.as_guardrail_prompt(),
             )
 
             tasks_path = Path(ctx.working_dir) / "tasks.json"
@@ -128,20 +156,57 @@ async def run_job(
         save_state(state)
         LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
 
+        # Persist task info to dashboard DB
+        import json as _json
+
+        tasks_data = _json.dumps([
+            {"id": t.id, "title": t.title, "status": t.status}
+            for t in ctx.tasks
+        ])
+        await emitter.update_job_tasks(
+            repo=repo_name,
+            issue_number=issue_number,
+            task_count=len(ctx.tasks),
+            completed_task_count=0,
+            tasks_json=tasks_data,
+        )
+
     # Step 5: Process tasks — each task gets its own branch, PR, merge
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
         LOG.info("📦 Processing batch: %s", batch_titles)
 
         for task in batch:
-            # Create a branch from latest main
-            task_branch = f"factory/issue-{issue_number}/{task.id}"
+            # Smart skip: check if task is already done
             await _checkout_main(ctx)
             await _pull_latest(ctx)
+
+            if await _is_task_already_done(
+                task, ctx, issue_number, github,
+            ):
+                LOG.info(
+                    "⏭️ Skipping '%s' — already complete",
+                    task.title,
+                )
+                task.status = "completed"
+                if task.issue_number:
+                    github.close_issue(ctx.repo_name, task.issue_number)
+                save_state(state)
+                continue
+
+            # Create a branch from latest main
+            task_branch = f"factory/issue-{issue_number}/{task.id}"
             await _create_branch_from(ctx, task_branch)
 
-            # Run the red-green cycle
-            await _process_task(task, ctx, github, model, state)
+            # Run the red-green cycle (subtasks or single task)
+            if task.has_subtasks:
+                await _process_task_with_subtasks(
+                    task, ctx, github, model, state, emitter,
+                )
+            else:
+                await _process_task(
+                    task, ctx, github, model, state, emitter,
+                )
 
             if task.status == "completed":
                 # Pull latest main before pushing to avoid conflicts
@@ -220,6 +285,26 @@ async def run_job(
         await _checkout_main(ctx)
         await _pull_latest(ctx)
         await _install_frontend_deps(ctx.working_dir)
+
+        # Regression scope guard: verify test count didn't decrease
+        test_ok, test_msg = await verify_test_count_not_decreased(
+            ctx.working_dir, pre_job_test_count,
+        )
+        if not test_ok:
+            LOG.error("🚫 %s", test_msg)
+
+        # Secret scan on final state
+        from factory.guardrails import scan_for_secrets
+
+        final_secrets = scan_for_secrets(ctx.working_dir)
+        real_secrets = [s for s in final_secrets if s.pattern_name != ".env file"]
+        if real_secrets:
+            LOG.warning(
+                "⚠️ Post-merge secret scan found %d issue(s). "
+                "Review before deploying.",
+                len(real_secrets),
+            )
+
         validation_ok = await _post_merge_validation(
             ctx,
             model,
@@ -413,6 +498,93 @@ def get_ready_batches(
             remaining.remove(t)
 
 
+def get_ready_subtask_batches(
+    subtasks: list[SubTaskInfo],
+) -> Generator[list[SubTaskInfo], None, None]:
+    """Yield batches of subtasks whose intra-task deps are complete."""
+    completed: set[str] = set()
+    remaining = list(subtasks)
+
+    for s in remaining[:]:
+        if s.status == "completed":
+            completed.add(s.id)
+            remaining.remove(s)
+
+    while remaining:
+        batch = [
+            s
+            for s in remaining
+            if all(d in completed for d in s.depends_on)
+        ]
+
+        if not batch:
+            pending_ids = [s.id for s in remaining]
+            raise RuntimeError(
+                f"Subtask deadlock: {pending_ids}"
+            )
+
+        yield batch
+
+        for s in batch:
+            completed.add(s.id)
+            remaining.remove(s)
+
+
+async def _process_task_with_subtasks(
+    task: TaskInfo,
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    emitter: EventEmitter | None = None,
+) -> None:
+    """Process a parent task by running its subtasks on a shared branch."""
+    LOG.info("🔧 Task (with subtasks): %s", task.title)
+    if emitter:
+        await emitter.emit_task_started(task.id)
+
+    for sub_batch in get_ready_subtask_batches(task.subtasks):
+        for subtask in sub_batch:
+            LOG.info(
+                "  🔹 Subtask: %s",
+                subtask.title,
+            )
+
+            # Wrap SubTaskInfo into TaskInfo for _process_task reuse
+            pseudo_task = TaskInfo(
+                id=subtask.id,
+                title=subtask.title,
+                description=subtask.description,
+                acceptance_criteria=subtask.acceptance_criteria,
+                depends_on=subtask.depends_on,
+            )
+
+            await _process_task(
+                pseudo_task, ctx, github, model, state, emitter,
+            )
+
+            # Mirror status back
+            subtask.status = pseudo_task.status
+            save_state(state)
+
+            if subtask.status == "failed":
+                task.status = "failed"
+                save_state(state)
+                LOG.error(
+                    "Subtask '%s' failed — stopping parent task '%s'",
+                    subtask.title,
+                    task.title,
+                )
+                return
+
+    # All subtasks completed
+    task.status = "completed"
+    if emitter:
+        await emitter.emit_task_completed(task.id)
+    save_state(state)
+    LOG.info("✅ All subtasks complete for '%s'", task.title)
+
+
 async def _process_task(
     task: TaskInfo,
     ctx: JobContext,
@@ -429,7 +601,7 @@ async def _process_task(
     # Phase 0: QA writes interface contracts (haiku — fast, simple task)
     LOG.info("  📄 QA writing contracts...")
     if emitter:
-        await emitter.emit_agent_spawned(task.id, "QA")
+        await emitter.emit_agent_spawned(task.id, "QA Engineer (Contracts)")
     await run_evaluator_contracts(
         task_title=task.title,
         task_description=task.description,
@@ -440,6 +612,9 @@ async def _process_task(
 
     # Phase 1: QA writes tests AND Developer scaffolds (parallel)
     LOG.info("  ⚡ QA writing tests + Developer scaffolding (parallel)...")
+    if emitter:
+        await emitter.emit_agent_spawned(task.id, "QA Engineer (RED)")
+        await emitter.emit_agent_spawned(task.id, "Developer (scaffold)")
     await asyncio.gather(
         run_evaluator_red(
             task_title=task.title,
@@ -456,6 +631,24 @@ async def _process_task(
         ),
     )
 
+    # Pre-check: does the code already satisfy the tests?
+    # If someone already implemented this feature (or a previous run
+    # was canceled after merging), skip the Developer entirely.
+    pre_passed, _ = await _run_tests_with_check(ctx.working_dir)
+    if pre_passed:
+        LOG.info(
+            "  ⏭️ Tests already pass — feature exists, skipping Developer"
+        )
+        if emitter:
+            await emitter.emit_round_result(task.id, 0, passed=True)
+            await emitter.emit_task_completed(task.id)
+        task.status = "completed"
+        await _commit_task(ctx, task)
+        if task.issue_number:
+            github.close_issue(ctx.repo_name, task.issue_number)
+        save_state(state)
+        return
+
     # Phase 2-3: Red-Green loop with smart QA
     for round_num in range(1, MAX_ROUNDS + 1):
         LOG.info("  🔄 Round %d/%d", round_num, MAX_ROUNDS)
@@ -463,6 +656,8 @@ async def _process_task(
 
         # Developer writes code
         LOG.info("    💻 Developer coding...")
+        if emitter:
+            await emitter.emit_agent_spawned(task.id, "Developer")
         await run_generator(
             task_title=task.title,
             task_description=task.description,
@@ -491,6 +686,8 @@ async def _process_task(
 
         # Tests failed — spawn QA only to write detailed feedback
         LOG.info("    🔍 Tests failed — spawning QA for feedback...")
+        if emitter:
+            await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
         await run_evaluator_review(
             task_title=task.title,
             round_number=round_num,
@@ -524,6 +721,7 @@ async def _process_task(
 
         if emitter:
             await emitter.emit_round_result(task.id, round_num, passed=False)
+            await emitter.emit_agent_exited(task.id, "QA Engineer", success=False)
         LOG.warning("  🔴 RED — round %d failed", round_num)
 
     if emitter:
@@ -554,19 +752,54 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
     """Load tasks.json written by the Architect."""
     tasks_path = Path(working_dir) / "tasks.json"
     if not tasks_path.exists():
-        raise FileNotFoundError(f"Architect didn't create tasks.json in {working_dir}")
+        raise FileNotFoundError(
+            f"Architect didn't create tasks.json in {working_dir}"
+        )
 
     raw = json.loads(tasks_path.read_text())
-    return [
-        TaskInfo(
-            id=t["id"],
-            title=t["title"],
-            description=t["description"],
-            acceptance_criteria=t.get("acceptance_criteria", []),
-            depends_on=t.get("depends_on", []),
+    all_ids: set[str] = set()
+    tasks: list[TaskInfo] = []
+
+    for t in raw:
+        task_id = t["id"]
+        if task_id in all_ids:
+            raise ValueError(f"Duplicate task ID: {task_id}")
+        all_ids.add(task_id)
+
+        subtasks: list[SubTaskInfo] = []
+        for s in t.get("subtasks", []):
+            sub_id = s["id"]
+            if sub_id in all_ids:
+                raise ValueError(
+                    f"Duplicate subtask ID: {sub_id}"
+                )
+            all_ids.add(sub_id)
+            subtasks.append(
+                SubTaskInfo(
+                    id=sub_id,
+                    title=s["title"],
+                    description=s.get("description", ""),
+                    acceptance_criteria=s.get(
+                        "acceptance_criteria", []
+                    ),
+                    depends_on=s.get("depends_on", []),
+                )
+            )
+
+        tasks.append(
+            TaskInfo(
+                id=task_id,
+                title=t["title"],
+                description=t.get("description", ""),
+                acceptance_criteria=t.get(
+                    "acceptance_criteria", []
+                ),
+                depends_on=t.get("depends_on", []),
+                subtasks=subtasks,
+            )
         )
-        for t in raw
-    ]
+
+    return tasks
 
 
 def _read_feedback(working_dir: str) -> str:
@@ -737,6 +970,18 @@ async def _regression_gate_with_healing(
                 working_dir=ctx.working_dir,
                 model=model,
             )
+
+            # Regression scope guard: check what the fix touched
+            changed = await _get_changed_files(ctx.working_dir)
+            scope_ok, scope_reason = await check_regression_scope(
+                ctx.working_dir, changed,
+            )
+            if not scope_ok:
+                LOG.error("🚫 Regression scope guard: %s", scope_reason)
+                raise RuntimeError(
+                    f"Regression fix exceeded scope limits. {scope_reason}"
+                )
+
             # Commit the fix
             proc = await asyncio.create_subprocess_exec(
                 "git",
@@ -1019,6 +1264,106 @@ async def _push_changes(ctx: JobContext) -> None:
         stderr=asyncio.subprocess.PIPE,
     )
     await proc.communicate()
+
+
+async def _is_task_already_done(
+    task: TaskInfo,
+    ctx: JobContext,
+    issue_number: int,
+    github: GitHubClient,
+) -> bool:
+    """Check if a task is already complete before running it.
+
+    Two checks:
+    1. Git: was the task branch already merged to main?
+    2. Tests: do existing tests already pass on current main?
+
+    Returns True if the task can be safely skipped.
+    """
+    # Check 1: was the task branch already merged?
+    branch_name = f"factory/issue-{issue_number}/{task.id}"
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "branch",
+        "-r",
+        "--merged",
+        "main",
+        cwd=ctx.working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    merged_branches = stdout.decode()
+    if f"origin/{branch_name}" in merged_branches:
+        LOG.info(
+            "  Branch %s already merged to main",
+            branch_name,
+        )
+        return True
+
+    # Check 2: was the corresponding GitHub sub-issue already closed?
+    if task.issue_number:
+        try:
+            repo = github.get_repo(ctx.repo_name)
+            issue = repo.get_issue(task.issue_number)
+            if issue.state == "closed":
+                LOG.info(
+                    "  Sub-issue #%d already closed",
+                    task.issue_number,
+                )
+                return True
+        except Exception:
+            pass  # If we can't check, don't skip
+
+    # Check 3: do existing tests pass? (only meaningful if tests exist
+    # for this task — check if test files reference the task's feature)
+    tests_dir = Path(ctx.working_dir) / "tests"
+    if tests_dir.exists():
+        # Look for test files that might be related to this task
+        task_keywords = task.title.lower().split()
+        related_tests = []
+        for test_file in tests_dir.glob("test_*.py"):
+            name = test_file.name.lower()
+            if any(kw in name for kw in task_keywords if len(kw) > 3):
+                related_tests.append(str(test_file))
+
+        if related_tests:
+            # Run just the related tests — if they pass, task is done
+            passed, _ = await _run_tests_with_check(ctx.working_dir)
+            if passed:
+                LOG.info(
+                    "  All tests pass on main — task already satisfied",
+                )
+                return True
+
+    return False
+
+
+async def _get_changed_files(working_dir: str) -> list[str]:
+    """Get list of files changed in the working directory (staged + unstaged)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "diff",
+        "--name-only",
+        "HEAD",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    # Also include untracked files
+    proc2 = await asyncio.create_subprocess_exec(
+        "git",
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout2, _ = await proc2.communicate()
+    files = stdout.decode().splitlines() + stdout2.decode().splitlines()
+    return [f for f in files if f.strip()]
 
 
 def _cleanup_artifacts(working_dir: str) -> None:
