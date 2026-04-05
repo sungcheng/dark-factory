@@ -104,6 +104,7 @@ export function TaskProgress({
 }: TaskProgressProps): React.ReactElement {
   void job;
   const [now, setNow] = useState(Date.now());
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Live timer for active tasks
   useEffect(() => {
@@ -121,11 +122,17 @@ export function TaskProgress({
     );
   }
 
-  const completed = tasks.filter(
+  const completedCount = tasks.filter(
     (t) => t.status === "completed" || t.status === "success",
   ).length;
   const total = tasks.length;
   const timings = getTaskTimings(tasks, events);
+
+  const isComplete = (t: Task) =>
+    t.status === "completed" || t.status === "success";
+  const visibleTasks = showCompleted
+    ? tasks
+    : tasks.filter((t) => !isComplete(t));
 
   return (
     <div>
@@ -134,16 +141,22 @@ export function TaskProgress({
           <div
             className="bg-green-500 h-2 rounded-full transition-all duration-500"
             style={{
-              width: `${total > 0 ? (completed / total) * 100 : 0}%`,
+              width: `${total > 0 ? (completedCount / total) * 100 : 0}%`,
             }}
           />
         </div>
         <span className="text-sm text-gray-400">
-          {completed}/{total}
+          {completedCount}/{total}
         </span>
+        <button
+          onClick={() => setShowCompleted(!showCompleted)}
+          className="text-xs text-gray-500 hover:text-gray-300 ml-2 whitespace-nowrap"
+        >
+          {showCompleted ? "Hide completed" : `Show all (${completedCount} done)`}
+        </button>
       </div>
       <ul className="space-y-2">
-        {tasks.map((task) => {
+        {visibleTasks.map((task) => {
           const status = task.status ?? "pending";
           const dotClass = STATUS_DOT[status] ?? STATUS_DOT.pending;
           const timing = timings[task.id];
