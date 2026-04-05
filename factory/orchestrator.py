@@ -322,6 +322,8 @@ async def run_job(
             )
         else:
             await emitter.emit_job_failed(repo_name, issue_number)
+            state.status = "failed"
+            save_state(state)
             LOG.warning(
                 "⚠️ All tasks merged but post-merge validation "
                 "failed. Issue #%d left open for manual review.",

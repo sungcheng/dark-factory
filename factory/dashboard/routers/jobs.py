@@ -101,18 +101,33 @@ async def list_jobs() -> list[JobSummary]:
     for j in _list_all_jobs():
         job_id = f"{j['repo_name']}#{j['issue_number']}"
         seen.add(job_id)
+        tasks = j.get("tasks", [])
+        task_count = len(tasks)
+        completed_count = sum(
+            1
+            for t in tasks
+            if t.get("status") in ("success", "completed")
+        )
+        failed_count = sum(
+            1
+            for t in tasks
+            if t.get("status") == "failed"
+        )
+        # Derive status if state file is stale
+        status = j.get("status", "in_progress")
+        if status == "in_progress" and task_count > 0:
+            if completed_count == task_count:
+                status = "completed"
+            elif failed_count > 0 and (completed_count + failed_count) == task_count:
+                status = "failed"
         results.append(
             JobSummary(
                 job_id=job_id,
                 repo_name=j["repo_name"],
                 issue_number=j["issue_number"],
-                status=j.get("status", "in_progress"),
-                task_count=len(j.get("tasks", [])),
-                completed_task_count=sum(
-                    1
-                    for t in j.get("tasks", [])
-                    if t.get("status") in ("success", "completed")
-                ),
+                status=status,
+                task_count=task_count,
+                completed_task_count=completed_count,
             )
         )
 
