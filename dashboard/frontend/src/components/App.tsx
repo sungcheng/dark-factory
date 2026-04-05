@@ -130,8 +130,16 @@ export function App(): React.ReactElement {
           ]);
           if (detailRes.ok) {
             const detail: JobDetailResponse = await detailRes.json();
+            // Namespace task IDs by issue to prevent collisions across issues
+            // (e.g., issue 1 and issue 6 both have "task-1")
+            const ns = `${j.issue_number}`;
             const tagged = detail.tasks.map((t) => ({
               ...t,
+              id: `${ns}/${t.id}`,
+              subtasks: (t.subtasks ?? []).map((s) => ({
+                ...s,
+                id: `${ns}/${s.id}`,
+              })),
               parentIssue: detail.issue_number,
               parentStatus: j.status,
             }));
@@ -139,12 +147,29 @@ export function App(): React.ReactElement {
           }
           if (logRes.ok) {
             const log = await logRes.json();
-            if (Array.isArray(log)) eventResults.push(...log);
+            if (Array.isArray(log)) {
+              // Namespace task-level events to match namespaced task IDs
+              // Job-level events (task_id contains "#") keep original ID
+              const ns = `${j.issue_number}`;
+              const namespaced = log.map((e: Event) => ({
+                ...e,
+                task_id: e.task_id.includes("#")
+                  ? e.task_id
+                  : `${ns}/${e.task_id}`,
+              }));
+              eventResults.push(...namespaced);
+            }
           }
         } catch {
           // skip failed fetches
         }
       }),
+    );
+
+    // Sort all events chronologically for correct timing calculations
+    eventResults.sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
     );
 
     setAllTasks(taskResults);

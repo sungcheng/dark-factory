@@ -18,37 +18,35 @@ function formatDuration(seconds: number): string {
 }
 
 function getJobStartTime(events: Event[]): Date | null {
-  // Use the most recent job_started event by timestamp (not array order)
-  // This handles aggregated events across multiple issues
+  // Use the EARLIEST job_started event — this is when the overall run began
   const starts = events
     .filter((e) => e.event_type === "job_started")
     .map((e) => new Date(e.timestamp).getTime())
-    .sort((a, b) => b - a); // newest first
+    .sort((a, b) => a - b); // oldest first
 
   if (starts.length > 0) {
     return new Date(starts[0]);
   }
-  // Fallback: use the most recent event timestamp
+  // Fallback: earliest event timestamp
   if (events.length > 0) {
     const timestamps = events.map((e) => new Date(e.timestamp).getTime());
-    const newest = Math.max(...timestamps);
-    // Use the earliest event within the last hour as start time
-    const oneHourAgo = Date.now() - 3600_000;
-    const recent = timestamps.filter((t) => t > oneHourAgo);
-    if (recent.length > 0) {
-      return new Date(Math.min(...recent));
-    }
-    return new Date(newest);
+    return new Date(Math.min(...timestamps));
   }
   return null;
 }
 
 function getTaskDurations(events: Event[]): number[] {
   // Find pairs of task_started → task_completed for same task_id
+  // Events must be sorted chronologically (App.tsx sorts them)
   const starts: Record<string, string> = {};
   const durations: number[] = [];
 
-  for (const e of events) {
+  const sorted = [...events].sort(
+    (a, b) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+  );
+
+  for (const e of sorted) {
     if (e.event_type === "task_started") {
       starts[e.task_id] = e.timestamp;
     }
@@ -62,6 +60,7 @@ function getTaskDurations(events: Event[]): number[] {
       if (duration > 0) {
         durations.push(duration);
       }
+      delete starts[e.task_id];
     }
   }
 
