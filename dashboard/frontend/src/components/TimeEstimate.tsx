@@ -18,14 +18,27 @@ function formatDuration(seconds: number): string {
 }
 
 function getJobStartTime(events: Event[]): Date | null {
-  // Use the MOST RECENT job_started event (handles restarts)
-  const starts = events.filter((e) => e.event_type === "job_started");
+  // Use the most recent job_started event by timestamp (not array order)
+  // This handles aggregated events across multiple issues
+  const starts = events
+    .filter((e) => e.event_type === "job_started")
+    .map((e) => new Date(e.timestamp).getTime())
+    .sort((a, b) => b - a); // newest first
+
   if (starts.length > 0) {
-    return new Date(starts[starts.length - 1].timestamp);
+    return new Date(starts[0]);
   }
-  // Fallback: use the earliest event timestamp
+  // Fallback: use the most recent event timestamp
   if (events.length > 0) {
-    return new Date(events[0].timestamp);
+    const timestamps = events.map((e) => new Date(e.timestamp).getTime());
+    const newest = Math.max(...timestamps);
+    // Use the earliest event within the last hour as start time
+    const oneHourAgo = Date.now() - 3600_000;
+    const recent = timestamps.filter((t) => t > oneHourAgo);
+    if (recent.length > 0) {
+      return new Date(Math.min(...recent));
+    }
+    return new Date(newest);
   }
   return null;
 }
