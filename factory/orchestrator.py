@@ -171,7 +171,17 @@ async def run_job(
             tasks_json=tasks_data,
         )
 
-    # Step 5: Process tasks — each task gets its own branch, PR, merge
+    # Step 5: Reset failed tasks so re-runs get a fresh 5 rounds
+    for task in ctx.tasks:
+        if task.status == "failed":
+            LOG.info("🔄 Resetting failed task '%s' for retry", task.title)
+            task.status = "pending"
+            for st in task.subtasks:
+                if st.status == "failed":
+                    st.status = "pending"
+            save_state(state)
+
+    # Step 6: Process tasks — each task gets its own branch, PR, merge
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
         LOG.info("📦 Processing batch: %s", batch_titles)
@@ -263,7 +273,7 @@ async def run_job(
                 )
                 save_state(state)
 
-    # Step 6: Finalize
+    # Step 7: Finalize
     completed = [t for t in ctx.tasks if t.status == "completed"]
     failed = [t for t in ctx.tasks if t.status == "failed"]
 

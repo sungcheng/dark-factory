@@ -84,8 +84,8 @@ LIFECYCLE_EVENTS: list[dict[str, object]] = [
     },
 ]
 
-# The subset of lifecycle events associated with the task (appear in /log)
-TASK_EVENTS = [e for e in LIFECYCLE_EVENTS if e["task_id"] == TASK_ID]
+# All lifecycle events now appear in /log (job-level + task-level)
+ALL_LOG_EVENTS = LIFECYCLE_EVENTS
 
 # State file written by the orchestrator for the test job
 TEST_JOB_STATE: dict[str, object] = {
@@ -374,8 +374,8 @@ class TestFullJobLifecycle:
 
         log = response.json()
         assert isinstance(log, list)
-        assert len(log) == len(TASK_EVENTS), (
-            f"Expected {len(TASK_EVENTS)} log entries (task-scoped events), "
+        assert len(log) == len(ALL_LOG_EVENTS), (
+            f"Expected {len(ALL_LOG_EVENTS)} log entries, "
             f"got {len(log)}: {[e.get('event_type') for e in log]}"
         )
 
@@ -423,7 +423,7 @@ class TestFullJobLifecycle:
 
         log = response.json()
         actual_types = [e["event_type"] for e in log]
-        expected_types = [e["event_type"] for e in TASK_EVENTS]
+        expected_types = [e["event_type"] for e in ALL_LOG_EVENTS]
         assert actual_types == expected_types, (
             f"Event type mismatch.\nExpected: {expected_types}\nActual:   {actual_types}"
         )
