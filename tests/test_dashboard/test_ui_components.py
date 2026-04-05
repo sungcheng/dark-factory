@@ -72,7 +72,10 @@ class TestAgentCards:
         # Must not just output a static "Idle" string without any logic
         # i.e. must have some conditional/computed status logic
         has_logic = bool(
-            re.search(r"(filter|find|reduce|map|switch|===|agent_started|agent_completed)", content)
+            re.search(
+                r"(filter|find|reduce|map|switch|===|agent_started|agent_completed)",
+                content,
+            )
         )
         assert has_logic, (
             "AgentCards must derive status from events (filter/find/map on events), "
@@ -83,38 +86,30 @@ class TestAgentCards:
 
     def test_agent_cards_has_gray_idle_class(self, content: str) -> None:
         """Idle agent cards must use a gray border/badge Tailwind class."""
-        has_gray = bool(
-            re.search(r"gray-[4-7]00|border-gray|text-gray", content)
-        )
-        assert has_gray, (
-            "AgentCards must use gray Tailwind classes for idle status"
-        )
+        has_gray = bool(re.search(r"gray-[4-7]00|border-gray|text-gray", content))
+        assert has_gray, "AgentCards must use gray Tailwind classes for idle status"
 
     def test_agent_cards_has_blue_active_class(self, content: str) -> None:
         """Active agent cards must use a blue border/badge Tailwind class."""
         has_blue = bool(
             re.search(r"blue-[4-6]00|border-blue|text-blue|bg-blue", content)
         )
-        assert has_blue, (
-            "AgentCards must use blue Tailwind classes for active status"
-        )
+        assert has_blue, "AgentCards must use blue Tailwind classes for active status"
 
     def test_agent_cards_has_green_done_class(self, content: str) -> None:
         """Done agent cards must use a green border/badge Tailwind class."""
         has_green = bool(
             re.search(r"green-[4-6]00|border-green|text-green|bg-green", content)
         )
-        assert has_green, (
-            "AgentCards must use green Tailwind classes for done status"
-        )
+        assert has_green, "AgentCards must use green Tailwind classes for done status"
 
     def test_agent_cards_status_is_dynamic_not_static(self, content: str) -> None:
         """Status text must be computed, not hardcoded as the only value."""
         # The stub just returns <p>Idle</p>. A real implementation uses a variable.
         # Test: if there is any ternary / conditional expression OR the word 'Idle'
         # only appears inside a conditional (not as the sole possible value).
-        hardcoded_only = bool(re.search(r'>\s*Idle\s*<', content)) and not bool(
-            re.search(r'[?:{}].*[Ii]dle|[Ii]dle.*[?:{}]', content)
+        hardcoded_only = bool(re.search(r">\s*Idle\s*<", content)) and not bool(
+            re.search(r"[?:{}].*[Ii]dle|[Ii]dle.*[?:{}]", content)
         )
         assert not hardcoded_only, (
             "AgentCards status must be dynamically computed from events, "
@@ -145,15 +140,11 @@ class TestTaskProgress:
         has_prop = bool(
             re.search(r"(tasks|events|jobDetail|job_detail|rounds)\s*[:\?]", content)
         )
-        assert has_prop, (
-            "TaskProgress must accept tasks/events/jobDetail prop"
-        )
+        assert has_prop, "TaskProgress must accept tasks/events/jobDetail prop"
 
     def test_task_progress_has_red_indicator_class(self, content: str) -> None:
         """TaskProgress must have red Tailwind classes for failed round indicators."""
-        has_red = bool(
-            re.search(r"red-[3-6]00|bg-red|text-red|border-red", content)
-        )
+        has_red = bool(re.search(r"red-[3-6]00|bg-red|text-red|border-red", content))
         assert has_red, (
             "TaskProgress must use red Tailwind classes for failed round indicators"
         )
@@ -169,9 +160,7 @@ class TestTaskProgress:
 
     def test_task_progress_renders_task_list(self, content: str) -> None:
         """TaskProgress must render a list/map of tasks, not a single progress bar."""
-        has_list = bool(
-            re.search(r"\.(map|forEach)\s*\(|<ul|<li|<ol", content)
-        )
+        has_list = bool(re.search(r"\.(map|forEach)\s*\(|<ul|<li|<ol", content))
         assert has_list, (
             "TaskProgress must render a list of tasks (map/forEach or ul/li elements), "
             "not just a single progress bar"
@@ -213,9 +202,7 @@ class TestLiveLog:
 
     def test_live_log_uses_polling_hook(self, content: str) -> None:
         """LiveLog must use the usePolling custom hook."""
-        assert "usePolling" in content, (
-            "LiveLog must use the usePolling custom hook"
-        )
+        assert "usePolling" in content, "LiveLog must use the usePolling custom hook"
 
     def test_live_log_polls_with_3_second_interval(self, content: str) -> None:
         """LiveLog polling interval must be 3000 ms."""
@@ -268,7 +255,9 @@ class TestLiveLog:
     def test_live_log_shows_event_type(self, content: str) -> None:
         """LiveLog entries must display the event type."""
         # Matches entry.type, entry.event_type, log.type, event_type, etc.
-        assert re.search(r"entry\.(event_)?type|log\.(event_)?type|event_type", content), (
+        assert re.search(
+            r"entry\.(event_)?type|log\.(event_)?type|event_type", content
+        ), (
             "LiveLog entries must display the event type (entry.type or entry.event_type)"
         )
 
@@ -280,9 +269,9 @@ class TestLiveLog:
 
     def test_live_log_imports_use_polling(self, content: str) -> None:
         """LiveLog must import usePolling from hooks."""
-        assert re.search(r"from\s+['\"].*hooks.*usePolling|from\s+['\"].*usePolling", content), (
-            "LiveLog must import usePolling from hooks/usePolling"
-        )
+        assert re.search(
+            r"from\s+['\"].*hooks.*usePolling|from\s+['\"].*usePolling", content
+        ), "LiveLog must import usePolling from hooks/usePolling"
 
     def test_live_log_handles_empty_state(self, content: str) -> None:
         """LiveLog must handle empty events (no hardcoded 'Waiting for events...' as the only branch)."""
@@ -356,10 +345,10 @@ class TestJobHistory:
     def test_job_history_highlights_selected_row(self, content: str) -> None:
         """Selected row must be visually highlighted (different Tailwind class)."""
         has_selected_style = bool(
-            re.search(r"selectedJobId|selected.*Id|activeJob|isSelected|selectedId", content)
-        ) and bool(
-            re.search(r"bg-(?:blue|gray|indigo|sky|slate)-[0-9]", content)
-        )
+            re.search(
+                r"selectedJobId|selected.*Id|activeJob|isSelected|selectedId", content
+            )
+        ) and bool(re.search(r"bg-(?:blue|gray|indigo|sky|slate)-[0-9]", content))
         assert has_selected_style, (
             "JobHistory must highlight the selected row with a distinct Tailwind class"
         )
@@ -391,15 +380,18 @@ class TestUsePollingHook:
 
     def test_use_polling_is_exported(self, content: str) -> None:
         """usePolling must be exported from the hooks file."""
-        assert re.search(r"export\s+(default\s+)?function\s+usePolling|export\s*\{.*usePolling", content), (
+        assert re.search(
+            r"export\s+(default\s+)?function\s+usePolling|export\s*\{.*usePolling",
+            content,
+        ), (
             "usePolling must be exported (export function usePolling or export { usePolling })"
         )
 
     def test_use_polling_accepts_fetcher_argument(self, content: str) -> None:
         """usePolling must accept a fetcher function as first argument."""
-        assert re.search(r"fetcher|fetchFn|fn\s*[:\(]|callback|fetch\s*[:\(]", content), (
-            "usePolling must accept a fetcher/fetchFn argument"
-        )
+        assert re.search(
+            r"fetcher|fetchFn|fn\s*[:\(]|callback|fetch\s*[:\(]", content
+        ), "usePolling must accept a fetcher/fetchFn argument"
 
     def test_use_polling_accepts_interval_argument(self, content: str) -> None:
         """usePolling must accept an interval argument (ms)."""
@@ -409,9 +401,7 @@ class TestUsePollingHook:
 
     def test_use_polling_returns_data(self, content: str) -> None:
         """usePolling must return a `data` field."""
-        assert re.search(r"\bdata\b", content), (
-            "usePolling must return a 'data' field"
-        )
+        assert re.search(r"\bdata\b", content), "usePolling must return a 'data' field"
 
     def test_use_polling_returns_loading(self, content: str) -> None:
         """usePolling must return a `loading` field."""
@@ -505,9 +495,7 @@ class TestAppWiring:
 
     def test_app_fetches_jobs_list(self, content: str) -> None:
         """App.tsx must fetch the jobs list (getJobs or usePolling)."""
-        has_jobs_fetch = bool(
-            re.search(r"getJobs|usePolling|fetchJobs", content)
-        )
+        has_jobs_fetch = bool(re.search(r"getJobs|usePolling|fetchJobs", content))
         assert has_jobs_fetch, (
             "App.tsx must fetch the jobs list via getJobs or usePolling"
         )

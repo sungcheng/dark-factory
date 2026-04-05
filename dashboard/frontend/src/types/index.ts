@@ -11,12 +11,59 @@ export enum EventType {
 
 export interface Event {
   id: string;
-  timestamp: string;
-  type: EventType;
   job_id: string;
-  agent_name?: string;
+  agent: "Architect" | "QA Engineer" | "Developer";
+  event_type: "started" | "completed" | "error" | "task_assigned" | "task_completed";
   message: string;
-  data?: Record<string, unknown>;
+  timestamp: string;
+  round: number;
+}
+
+export interface Job {
+  id: string;
+  repo_name: string;
+  status: "pending" | "running" | "completed" | "failed";
+  created_at: string;
+  updated_at: string;
+  duration_seconds?: number;
+}
+
+export interface Task {
+  id: string;
+  job_id: string;
+  round: number;
+  description: string;
+  status: "pending" | "completed" | "failed";
+  created_at: string;
+}
+
+export interface RoundResult {
+  round: number;
+  status: "success" | "failure";
+  timestamp: string;
+}
+
+export interface AgentStatus {
+  agent: "Architect" | "QA Engineer" | "Developer";
+  state: "idle" | "active" | "done";
+  lastEvent?: Event;
+  currentTask?: string;
+}
+
+export interface JobHistoryEntry {
+  id: string;
+  repo_name: string;
+  status: "pending" | "running" | "completed" | "failed";
+  duration_seconds: number;
+  created_at: string;
+}
+
+export interface LogEntry {
+  timestamp: string;
+  event_type: string;
+  agent: string;
+  message: string;
+  round: number;
 }
 
 export interface JobSummary {
