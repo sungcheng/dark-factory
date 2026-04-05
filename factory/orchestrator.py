@@ -34,16 +34,7 @@ async def run_job(
     issue_number: int,
     model: str | None = None,
 ) -> None:
-    """Main orchestrator loop.
-
-    1. Fetch issue from GitHub
-    2. Spawn Architect to create tasks
-    3. Run regression gate on existing tests
-    4. Process tasks in dependency order (parallel where possible)
-    5. For each task: QA writes tests -> Developer codes -> QA reviews
-    6. If all pass: open PR and merge
-    7. If any fail: open draft PR + create needs-human issues
-    """
+    """Main orchestrator loop."""
     # Health check — verify claude CLI works before doing anything
     await _check_claude_cli()
 
@@ -73,20 +64,24 @@ async def run_job(
         state.working_dir = ctx.working_dir
         save_state(state)
 
-    # Step 3: Regression gate — verify existing tests pass
-    LOG.info("🛡️ Running regression gate...")
-    await run_evaluator_regression(
-        working_dir=ctx.working_dir,
-        model=model,
-    )
-    regression_fail = Path(ctx.working_dir) / "regression-fail.md"
-    if regression_fail.exists():
-        LOG.error("💥 Regression gate FAILED — existing tests are broken")
-        raise RuntimeError(
-            "Regression gate failed. Fix existing tests before adding new features. "
-            f"See: {regression_fail}"
+    # Step 3: Regression gate — skip on first task (nothing to regress)
+    has_existing_tests = await _has_tests(ctx.working_dir)
+    if has_existing_tests:
+        LOG.info("🛡️ Running regression gate...")
+        await run_evaluator_regression(
+            working_dir=ctx.working_dir,
+            model="haiku",  # Use haiku — just running tests
         )
-    _cleanup_file(ctx.working_dir, "regression-pass.md")
+        regression_fail = Path(ctx.working_dir) / "regression-fail.md"
+        if regression_fail.exists():
+            LOG.error("💥 Regression gate FAILED — existing tests are broken")
+            raise RuntimeError(
+                "Regression gate failed. Fix existing tests before adding new features. "
+                f"See: {regression_fail}"
+            )
+        _cleanup_file(ctx.working_dir, "regression-pass.md")
+    else:
+        LOG.info("🛡️ Skipping regression gate — no existing tests")
 
     # Step 4: Spawn the Architect (if not resuming with tasks)
     if not ctx.tasks:
@@ -210,13 +205,7 @@ async def retry_job(
     issue_number: int,
     model: str | None = None,
 ) -> None:
-    """Retry failed tasks using human guidance from GitHub issue comments.
-
-    1. Load saved state
-    2. Find needs-human issues with human comments
-    3. Retry each failed task with human guidance injected into prompt
-    4. If all pass: convert draft PR to ready, merge
-    """
+    """Retry failed tasks using human guidance from GitHub issue comments."""
     github = GitHubClient()
 
     state = load_state(repo_name, issue_number)
@@ -234,16 +223,14 @@ async def retry_job(
         tasks=state.tasks,
     )
 
-    LOG.info("Retrying failed tasks for %s#%d", repo_name, issue_number)
+    LOG.info("🔄 Retrying failed tasks for %s#%d", repo_name, issue_number)
 
-    # Find failed tasks and their human guidance
     failed_tasks = [t for t in ctx.tasks if t.status == "failed"]
     if not failed_tasks:
         LOG.info("No failed tasks to retry")
         return
 
     for task in failed_tasks:
-        # Get human comments from the failure issue
         human_guidance = ""
         if task.failure_issue:
             comments = github.get_issue_comments(repo_name, task.failure_issue)
@@ -253,17 +240,14 @@ async def retry_job(
             else:
                 LOG.warning("No comments on failure issue #%d — retrying without guidance", task.failure_issue)
 
-        # Reset task status and retry
         task.status = "pending"
         await _process_task_with_guidance(task, ctx, github, model, state, human_guidance)
 
-    # Check results
     still_failed = [t for t in ctx.tasks if t.status == "failed"]
 
     await _push_changes(ctx)
 
     if still_failed:
-        # Update the failure issues
         for task in still_failed:
             feedback = _read_feedback(ctx.working_dir)
             if task.failure_issue:
@@ -276,11 +260,9 @@ async def retry_job(
         save_state(state)
         LOG.warning("Retry failed. %d task(s) still need human input.", len(still_failed))
     else:
-        # All tasks passed — convert draft to ready and merge
         if state.pr_number:
             repo = github.get_repo(repo_name)
             pr = repo.get_pull(state.pr_number)
-            # Update PR body and mark ready
             completed = [t for t in ctx.tasks if t.status == "completed"]
             pr.edit(
                 title=f"feat: {repo.get_issue(issue_number).title}",
@@ -294,7 +276,6 @@ async def retry_job(
             )
             github.merge_pr(repo_name, state.pr_number)
 
-        # Close failure issues
         for task in ctx.tasks:
             if task.failure_issue:
                 github.close_issue(repo_name, task.failure_issue)
@@ -302,7 +283,7 @@ async def retry_job(
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
-        LOG.info("Retry successful. All tasks complete. PR merged.")
+        LOG.info("✅ Retry successful. All tasks complete. PR merged.")
 
 
 async def _process_task_with_guidance(
@@ -313,16 +294,14 @@ async def _process_task_with_guidance(
     state: JobState,
     human_guidance: str,
 ) -> None:
-    """Retry a failed task with human guidance injected into the Developer prompt."""
-    LOG.info("Retrying task: %s", task.title)
+    """Retry a failed task with human guidance."""
+    LOG.info("🔄 Retrying task: %s", task.title)
 
-    # Red-Green loop with human guidance
     for round_num in range(1, MAX_ROUNDS + 1):
-        LOG.info("  Retry round %d/%d", round_num, MAX_ROUNDS)
+        LOG.info("  🔄 Retry round %d/%d", round_num, MAX_ROUNDS)
         _cleanup_artifacts(ctx.working_dir)
 
-        # Developer writes code with human guidance
-        LOG.info("    Developer coding (with human guidance)...")
+        LOG.info("    💻 Developer coding (with human guidance)...")
         await run_generator(
             task_title=task.title,
             task_description=task.description,
@@ -333,18 +312,10 @@ async def _process_task_with_guidance(
             human_guidance=human_guidance,
         )
 
-        # QA reviews
-        LOG.info("    🔍 QA Engineer reviewing...")
-        await run_evaluator_review(
-            task_title=task.title,
-            round_number=round_num,
-            working_dir=ctx.working_dir,
-            model=model,
-        )
-
-        approved_path = Path(ctx.working_dir) / "approved.md"
-        if approved_path.exists():
-            LOG.info("  GREEN — task approved on retry round %d", round_num)
+        # Smart QA: run tests directly first, only spawn agent if needed
+        passed, test_output = await _run_tests_with_check(ctx.working_dir)
+        if passed:
+            LOG.info("  ✅ GREEN — task approved on retry round %d", round_num)
             task.status = "completed"
             await _commit_task(ctx, task)
             if task.issue_number:
@@ -352,7 +323,13 @@ async def _process_task_with_guidance(
             save_state(state)
             return
 
-        LOG.warning("  RED — retry round %d failed", round_num)
+        # Tests failed — write feedback directly instead of spawning QA
+        feedback_path = Path(ctx.working_dir) / "feedback.md"
+        feedback_path.write_text(
+            f"# Feedback — Retry Round {round_num}\n\n"
+            f"```\n{test_output}\n```\n"
+        )
+        LOG.warning("  🔴 RED — retry round %d failed", round_num)
 
     task.status = "failed"
     save_state(state)
@@ -360,14 +337,10 @@ async def _process_task_with_guidance(
 
 
 def get_ready_batches(tasks: list[TaskInfo]) -> list[list[TaskInfo]]:
-    """Yield batches of tasks whose dependencies are all complete.
-
-    Tasks in the same batch can run in parallel.
-    """
+    """Yield batches of tasks whose dependencies are all complete."""
     completed: set[str] = set()
     remaining = list(tasks)
 
-    # Include already-completed tasks from resumed state
     for t in remaining[:]:
         if t.status == "completed":
             completed.add(t.id)
@@ -403,14 +376,14 @@ async def _process_task(
     """Run the full red-green cycle for a single task."""
     LOG.info("🔧 Task: %s", task.title)
 
-    # Phase 0: QA writes interface contracts
-    LOG.info("  📄 QA Engineer writing contracts...")
+    # Phase 0: QA writes interface contracts (haiku — fast, simple task)
+    LOG.info("  📄 QA writing contracts...")
     await run_evaluator_contracts(
         task_title=task.title,
         task_description=task.description,
         acceptance_criteria=task.acceptance_criteria,
         working_dir=ctx.working_dir,
-        model=model,
+        model="haiku",
     )
 
     # Phase 1: QA writes tests AND Developer scaffolds (parallel)
@@ -431,11 +404,9 @@ async def _process_task(
         ),
     )
 
-    # Phase 2-3: Red-Green loop
+    # Phase 2-3: Red-Green loop with smart QA
     for round_num in range(1, MAX_ROUNDS + 1):
         LOG.info("  🔄 Round %d/%d", round_num, MAX_ROUNDS)
-
-        # Remove stale artifacts
         _cleanup_artifacts(ctx.working_dir)
 
         # Developer writes code
@@ -449,8 +420,21 @@ async def _process_task(
             model=model,
         )
 
-        # QA reviews
-        LOG.info("    🔍 QA Engineer reviewing...")
+        # Smart QA: run tests directly first
+        passed, test_output = await _run_tests_with_check(ctx.working_dir)
+
+        if passed:
+            # Tests pass — quick approve, no need to spawn QA agent
+            LOG.info("  ✅ GREEN — all tests pass on round %d", round_num)
+            task.status = "completed"
+            await _commit_task(ctx, task)
+            if task.issue_number:
+                github.close_issue(ctx.repo_name, task.issue_number)
+            save_state(state)
+            return
+
+        # Tests failed — spawn QA only to write detailed feedback
+        LOG.info("    🔍 Tests failed — spawning QA for feedback...")
         await run_evaluator_review(
             task_title=task.title,
             round_number=round_num,
@@ -458,12 +442,13 @@ async def _process_task(
             model=model,
         )
 
-        # Check result
-        approved_path = Path(ctx.working_dir) / "approved.md"
+        # Ensure feedback exists
         feedback_path = Path(ctx.working_dir) / "feedback.md"
+        approved_path = Path(ctx.working_dir) / "approved.md"
 
+        # QA might approve despite test failures (e.g., flaky tests)
         if approved_path.exists():
-            LOG.info("  ✅ GREEN — task approved on round %d", round_num)
+            LOG.info("  ✅ GREEN — QA approved on round %d", round_num)
             task.status = "completed"
             await _commit_task(ctx, task)
             if task.issue_number:
@@ -472,17 +457,13 @@ async def _process_task(
             return
 
         if not feedback_path.exists():
-            # QA crashed without writing feedback — generate a default
-            LOG.warning("  QA Review didn't write feedback or approved — running tests directly")
-            test_result = await _run_tests(ctx.working_dir)
             feedback_path.write_text(
                 f"# Feedback — Round {round_num}\n\n"
-                f"QA Review agent crashed. Test output:\n\n```\n{test_result}\n```\n"
+                f"Test output:\n\n```\n{test_output}\n```\n"
             )
 
         LOG.warning("  🔴 RED — round %d failed", round_num)
 
-    # Exhausted all rounds — mark as failed but don't crash
     task.status = "failed"
     save_state(state)
     LOG.error(
@@ -526,29 +507,52 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
     ]
 
 
-def _build_pr_body(
-    issue_number: int,
-    completed: list[TaskInfo],
-    failed: list[TaskInfo],
-    pending: list[TaskInfo],
-) -> str:
-    """Build PR body showing task progress."""
-    body = f"Closes #{issue_number}\n\nAutonomous implementation by Dark Factory.\n\n"
-    if completed:
-        body += "## Completed\n" + "\n".join(f"- [x] {t.title}" for t in completed) + "\n\n"
-    if failed:
-        body += "## Failed (needs human input)\n" + "\n".join(f"- [ ] {t.title}" for t in failed) + "\n\n"
-    if pending:
-        body += "## Pending\n" + "\n".join(f"- [ ] {t.title}" for t in pending) + "\n\n"
-    return body
-
-
 def _read_feedback(working_dir: str) -> str:
     """Read feedback.md if it exists."""
     path = Path(working_dir) / "feedback.md"
     if path.exists():
         return path.read_text()
     return "No feedback file found."
+
+
+async def _has_tests(working_dir: str) -> bool:
+    """Check if the repo has existing test files."""
+    tests_dir = Path(working_dir) / "tests"
+    if not tests_dir.exists():
+        return False
+    test_files = list(tests_dir.glob("test_*.py"))
+    return len(test_files) > 0
+
+
+async def _run_tests_with_check(working_dir: str) -> tuple[bool, str]:
+    """Run make test + make check directly. Returns (passed, output)."""
+    # Run tests
+    test_proc = await asyncio.create_subprocess_exec(
+        "make", "test",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    test_stdout, _ = await asyncio.wait_for(test_proc.communicate(), timeout=120)
+    test_output = test_stdout.decode()[-2000:]
+
+    if test_proc.returncode != 0:
+        return False, test_output
+
+    # Run check (lint + types)
+    check_proc = await asyncio.create_subprocess_exec(
+        "make", "check",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    check_stdout, _ = await asyncio.wait_for(check_proc.communicate(), timeout=120)
+    check_output = check_stdout.decode()[-2000:]
+
+    if check_proc.returncode != 0:
+        return False, f"Tests passed but lint/type check failed:\n{check_output}"
+
+    return True, test_output
 
 
 async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
@@ -643,18 +647,6 @@ async def _push_changes(ctx: JobContext) -> None:
         stderr=asyncio.subprocess.PIPE,
     )
     await proc.communicate()
-
-
-async def _run_tests(working_dir: str) -> str:
-    """Run make test directly and return output."""
-    proc = await asyncio.create_subprocess_exec(
-        "make", "test",
-        cwd=working_dir,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
-    return stdout.decode()[-2000:]  # Last 2000 chars of test output
 
 
 def _cleanup_artifacts(working_dir: str) -> None:
