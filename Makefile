@@ -25,14 +25,14 @@ format:				## Auto-format code
 repos:				## List all GitHub repos
 	uv run dark-factory repos
 
-run:				## Run factory on all open issues (usage: make run REPO=weather-api)
-	uv run dark-factory run --repo $(REPO)
+run:				## Run factory on all open issues (usage: make run repo=weather-api)
+	uv run dark-factory run --repo $(repo)
 
-start:				## Start a single job (usage: make start REPO=weather-api ISSUE=1)
-	uv run dark-factory start --repo $(REPO) --issue $(ISSUE)
+start:				## Start a single job (usage: make start repo=weather-api issue=1)
+	uv run dark-factory start --repo $(repo) --issue $(issue)
 
-retry:				## Retry failed tasks (usage: make retry REPO=weather-api ISSUE=1)
-	uv run dark-factory retry --repo $(REPO) --issue $(ISSUE)
+retry:				## Retry failed tasks (usage: make retry repo=weather-api issue=1)
+	uv run dark-factory retry --repo $(repo) --issue $(issue)
 
 # ─── Housekeeping ────────────────────────────────────────
 clean:				## Remove build artifacts
