@@ -101,6 +101,7 @@ async def fetch_events_for_job(task_ids: list[str]) -> list[EventOut]:
     """
 
     async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(_CREATE_TABLE_SQL)
         conn.row_factory = aiosqlite.Row
         async with conn.execute(query, task_ids) as cursor:
             rows = await cursor.fetchall()
