@@ -14,7 +14,7 @@ LOG = logging.getLogger(__name__)
 
 DB_PATH: str = "dark_factory.db"
 
-_CREATE_TABLE_SQL = """\
+_CREATE_EVENTS_SQL = """\
 CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY,
     task_id TEXT NOT NULL,
@@ -25,16 +25,104 @@ CREATE TABLE IF NOT EXISTS events (
 )
 """
 
+_CREATE_JOBS_SQL = """\
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id TEXT PRIMARY KEY,
+    repo_name TEXT NOT NULL,
+    issue_number INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'in_progress',
+    task_count INTEGER NOT NULL DEFAULT 0,
+    completed_task_count INTEGER NOT NULL DEFAULT 0,
+    tasks_json TEXT DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+
 
 async def init_db() -> None:
     """Initialize database on application startup.
 
-    Creates the events table if it does not already exist.
+    Creates the events and jobs tables if they do not already exist.
     Safe to call multiple times (idempotent).
     """
     async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(_CREATE_TABLE_SQL)
+        await conn.execute(_CREATE_EVENTS_SQL)
+        await conn.execute(_CREATE_JOBS_SQL)
         await conn.commit()
+
+
+async def upsert_job(
+    job_id: str,
+    repo_name: str,
+    issue_number: int,
+    status: str = "in_progress",
+    task_count: int = 0,
+    completed_task_count: int = 0,
+    tasks_json: str = "[]",
+) -> None:
+    """Insert or update a job record.
+
+    Called by the orchestrator (via emitter) to persist job state
+    into the database so historical jobs survive state file cleanup.
+    """
+    now = datetime.now(UTC).isoformat()
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(_CREATE_JOBS_SQL)
+        await conn.execute(
+            """\
+            INSERT INTO jobs (
+                job_id, repo_name, issue_number, status,
+                task_count, completed_task_count, tasks_json,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                status = excluded.status,
+                task_count = excluded.task_count,
+                completed_task_count = excluded.completed_task_count,
+                tasks_json = excluded.tasks_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                job_id,
+                repo_name,
+                issue_number,
+                status,
+                task_count,
+                completed_task_count,
+                tasks_json,
+                now,
+                now,
+            ),
+        )
+        await conn.commit()
+
+
+async def fetch_all_jobs() -> list[dict[str, object]]:
+    """Fetch all jobs from the database, most recent first."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(_CREATE_JOBS_SQL)
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM jobs ORDER BY updated_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    return [dict(row) for row in rows]
+
+
+async def fetch_job(job_id: str) -> dict[str, object] | None:
+    """Fetch a single job from the database."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(_CREATE_JOBS_SQL)
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM jobs WHERE job_id = ?",
+            (job_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+
+    return dict(row) if row else None
 
 
 async def insert_event(event_in: EventIn) -> EventOut:
@@ -53,7 +141,7 @@ async def insert_event(event_in: EventIn) -> EventOut:
     timestamp = datetime.now(UTC)
 
     async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(_CREATE_TABLE_SQL)
+        await conn.execute(_CREATE_EVENTS_SQL)
         await conn.execute(
             """\
             INSERT INTO events (id, task_id, event_type, status, message, timestamp)
@@ -101,7 +189,7 @@ async def fetch_events_for_job(task_ids: list[str]) -> list[EventOut]:
     """
 
     async with aiosqlite.connect(DB_PATH) as conn:
-        await conn.execute(_CREATE_TABLE_SQL)
+        await conn.execute(_CREATE_EVENTS_SQL)
         conn.row_factory = aiosqlite.Row
         async with conn.execute(query, task_ids) as cursor:
             rows = await cursor.fetchall()

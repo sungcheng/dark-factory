@@ -7,6 +7,7 @@ import tempfile
 import uuid
 from datetime import UTC
 from datetime import datetime
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -210,8 +211,21 @@ class TestJobsRouterFileExists:
 # ---------------------------------------------------------------------------
 
 
+async def _empty_db_jobs() -> list[dict[str, object]]:
+    return []
+
+
 class TestListJobsEndpoint:
     """GET /api/v1/jobs behaves according to acceptance criteria."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_db(self) -> Generator[None, None, None]:  # type: ignore[type-arg]
+        """Isolate tests from the real DB."""
+        with patch(
+            "factory.dashboard.routers.jobs.fetch_all_jobs",
+            new=_empty_db_jobs,
+        ):
+            yield
 
     @pytest.mark.anyio
     async def test_list_jobs_returns_200(self) -> None:

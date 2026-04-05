@@ -11,12 +11,11 @@ export enum EventType {
 
 export interface Event {
   id: string;
-  job_id: string;
-  agent: "Architect" | "QA Engineer" | "Developer";
-  event_type: "started" | "completed" | "error" | "task_assigned" | "task_completed";
-  message: string;
+  task_id: string;
+  event_type: string;
+  status: string;
+  message: string | null;
   timestamp: string;
-  round: number;
 }
 
 export interface Job {
@@ -28,13 +27,26 @@ export interface Job {
   duration_seconds?: number;
 }
 
+export interface SubTask {
+  id: string;
+  title: string;
+  description: string;
+  status: "pending" | "in_progress" | "completed" | "success" | "failed";
+  acceptance_criteria: string[];
+  depends_on: string[];
+  failure_issue: number | null;
+}
+
 export interface Task {
   id: string;
-  job_id: string;
-  round: number;
+  title: string;
   description: string;
-  status: "pending" | "completed" | "failed";
-  created_at: string;
+  status: "pending" | "in_progress" | "completed" | "success" | "failed";
+  issue_number: number | null;
+  failure_issue: number | null;
+  acceptance_criteria: string[];
+  depends_on: string[];
+  subtasks?: SubTask[];
 }
 
 export interface RoundResult {
@@ -51,11 +63,12 @@ export interface AgentStatus {
 }
 
 export interface JobHistoryEntry {
-  id: string;
+  job_id: string;
   repo_name: string;
-  status: "pending" | "running" | "completed" | "failed";
-  duration_seconds: number;
-  created_at: string;
+  issue_number: number;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  task_count: number;
+  completed_task_count: number;
 }
 
 export interface LogEntry {

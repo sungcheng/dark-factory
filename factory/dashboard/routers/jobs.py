@@ -8,10 +8,12 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi import HTTPException
 
+from factory.dashboard.db import fetch_all_jobs
 from factory.dashboard.db import fetch_events_for_job
 from factory.dashboard.models import EventOut
 from factory.dashboard.models import JobDetail
 from factory.dashboard.models import JobSummary
+from factory.dashboard.models import SubTaskOut
 from factory.dashboard.models import TaskOut
 
 LOG = logging.getLogger(__name__)
@@ -91,21 +93,49 @@ def _list_all_jobs() -> list[dict[str, Any]]:
 
 @router.get("/jobs", response_model=list[JobSummary])
 async def list_jobs() -> list[JobSummary]:
-    """List all jobs sorted by most recent first."""
-    jobs = _list_all_jobs()
-    return [
-        JobSummary(
-            job_id=f"{j['repo_name']}#{j['issue_number']}",
-            repo_name=j["repo_name"],
-            issue_number=j["issue_number"],
-            status=j.get("status", "in_progress"),
-            task_count=len(j.get("tasks", [])),
-            completed_task_count=sum(
-                1 for t in j.get("tasks", []) if t.get("status") == "success"
-            ),
+    """List all jobs from state files + DB (for historical jobs)."""
+    seen: set[str] = set()
+    results: list[JobSummary] = []
+
+    # Active jobs from state files (most up-to-date)
+    for j in _list_all_jobs():
+        job_id = f"{j['repo_name']}#{j['issue_number']}"
+        seen.add(job_id)
+        results.append(
+            JobSummary(
+                job_id=job_id,
+                repo_name=j["repo_name"],
+                issue_number=j["issue_number"],
+                status=j.get("status", "in_progress"),
+                task_count=len(j.get("tasks", [])),
+                completed_task_count=sum(
+                    1
+                    for t in j.get("tasks", [])
+                    if t.get("status") in ("success", "completed")
+                ),
+            )
         )
-        for j in jobs
-    ]
+
+    # Historical jobs from DB (not in state files)
+    for j in await fetch_all_jobs():
+        job_id = str(j["job_id"])
+        if job_id in seen:
+            continue
+        issue_num = j["issue_number"]
+        t_count = j["task_count"]
+        c_count = j["completed_task_count"]
+        results.append(
+            JobSummary(
+                job_id=job_id,
+                repo_name=str(j["repo_name"]),
+                issue_number=int(str(issue_num)),
+                status=str(j["status"]),
+                task_count=int(str(t_count)),
+                completed_task_count=int(str(c_count)),
+            )
+        )
+
+    return results
 
 
 @router.get("/jobs/{job_id}", response_model=JobDetail)
@@ -122,6 +152,20 @@ async def get_job(job_id: str) -> JobDetail:
             failure_issue=t.get("failure_issue"),
             acceptance_criteria=t.get("acceptance_criteria", []),
             depends_on=t.get("depends_on", []),
+            subtasks=[
+                SubTaskOut(
+                    id=s["id"],
+                    title=s["title"],
+                    description=s.get("description", ""),
+                    status=s.get("status", "pending"),
+                    acceptance_criteria=s.get(
+                        "acceptance_criteria", []
+                    ),
+                    depends_on=s.get("depends_on", []),
+                    failure_issue=s.get("failure_issue"),
+                )
+                for s in t.get("subtasks", [])
+            ],
         )
         for t in data.get("tasks", [])
     ]

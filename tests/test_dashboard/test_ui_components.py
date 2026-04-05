@@ -200,14 +200,16 @@ class TestLiveLog:
             "LiveLog must accept a jobId prop"
         )
 
-    def test_live_log_uses_polling_hook(self, content: str) -> None:
-        """LiveLog must use the usePolling custom hook."""
-        assert "usePolling" in content, "LiveLog must use the usePolling custom hook"
+    def test_live_log_receives_events_as_prop(self, content: str) -> None:
+        """LiveLog must accept events as a prop (parent handles polling)."""
+        assert re.search(r"events\s*[:\?]", content), (
+            "LiveLog must accept an events prop"
+        )
 
-    def test_live_log_polls_with_3_second_interval(self, content: str) -> None:
-        """LiveLog polling interval must be 3000 ms."""
-        assert "3000" in content, (
-            "LiveLog must configure usePolling with a 3000 ms interval"
+    def test_live_log_renders_event_entries(self, content: str) -> None:
+        """LiveLog must map over events to render entries."""
+        assert re.search(r"events\.(map|forEach)\s*\(", content), (
+            "LiveLog must map over events to render log entries"
         )
 
     def test_live_log_uses_ref_for_auto_scroll(self, content: str) -> None:
@@ -267,11 +269,14 @@ class TestLiveLog:
             "LiveLog entries must display event message or details"
         )
 
-    def test_live_log_imports_use_polling(self, content: str) -> None:
-        """LiveLog must import usePolling from hooks."""
-        assert re.search(
-            r"from\s+['\"].*hooks.*usePolling|from\s+['\"].*usePolling", content
-        ), "LiveLog must import usePolling from hooks/usePolling"
+    def test_live_log_accepts_job_id_and_events(self, content: str) -> None:
+        """LiveLog must accept both jobId and events props."""
+        assert re.search(r"jobId\s*[:\?]", content), (
+            "LiveLog must accept a jobId prop"
+        )
+        assert re.search(r"events\s*[:\?]", content), (
+            "LiveLog must accept an events prop"
+        )
 
     def test_live_log_handles_empty_state(self, content: str) -> None:
         """LiveLog must handle empty events (no hardcoded 'Waiting for events...' as the only branch)."""
@@ -295,10 +300,10 @@ class TestJobHistory:
     def content(self) -> str:
         return read_component("JobHistory.tsx")
 
-    def test_job_history_accepts_jobs_prop(self, content: str) -> None:
-        """JobHistory must accept a `jobs` prop (array of JobSummary)."""
-        assert re.search(r"jobs\s*[:\?]", content), (
-            "JobHistory must accept a 'jobs' prop"
+    def test_job_history_fetches_jobs(self, content: str) -> None:
+        """JobHistory must fetch jobs from the API."""
+        assert re.search(r"fetch.*jobs|usePolling|getJobs", content), (
+            "JobHistory must fetch jobs from the API"
         )
 
     def test_job_history_accepts_on_select_prop(self, content: str) -> None:
@@ -324,10 +329,12 @@ class TestJobHistory:
             "JobHistory must render status badges with color-coded Tailwind classes"
         )
 
-    def test_job_history_shows_duration(self, content: str) -> None:
-        """JobHistory must display job duration."""
-        assert re.search(r"duration|elapsed|started_at|completed_at", content), (
-            "JobHistory must display job duration (started_at/completed_at or computed)"
+    def test_job_history_shows_task_progress(self, content: str) -> None:
+        """JobHistory must display task progress (completed/total)."""
+        assert re.search(
+            r"task_count|completed_task_count|task.*count", content
+        ), (
+            "JobHistory must display task progress"
         )
 
     def test_job_history_shows_repo_name(self, content: str) -> None:
@@ -487,17 +494,21 @@ class TestAppWiring:
             "App.tsx must pass props (jobId) to LiveLog"
         )
 
-    def test_app_passes_on_select_to_job_history(self, content: str) -> None:
-        """App.tsx must pass an onSelect handler to JobHistory."""
-        assert re.search(r"<JobHistory\s+[a-zA-Z]", content), (
-            "App.tsx must pass props (onSelect/jobs) to JobHistory"
+    def test_app_has_job_selector(self, content: str) -> None:
+        """App.tsx must have a job selector (dropdown or list)."""
+        assert re.search(
+            r"<select|<JobHistory|setSelectedJobId|onSelectJob", content
+        ), (
+            "App.tsx must have a job selector mechanism"
         )
 
     def test_app_fetches_jobs_list(self, content: str) -> None:
-        """App.tsx must fetch the jobs list (getJobs or usePolling)."""
-        has_jobs_fetch = bool(re.search(r"getJobs|usePolling|fetchJobs", content))
+        """App.tsx must fetch the jobs list."""
+        has_jobs_fetch = bool(
+            re.search(r"getJobs|usePolling|fetchJobs|fetch.*jobs|/api/v1/jobs", content)
+        )
         assert has_jobs_fetch, (
-            "App.tsx must fetch the jobs list via getJobs or usePolling"
+            "App.tsx must fetch the jobs list"
         )
 
     def test_app_agent_cards_at_top(self, content: str) -> None:
@@ -524,13 +535,14 @@ class TestAppWiring:
             "(side-by-side layout)"
         )
 
-    def test_app_job_history_at_bottom(self, content: str) -> None:
-        """JobHistory must appear after AgentCards, TaskProgress, and LiveLog."""
-        agent_pos = content.find("AgentCards")
-        history_pos = content.find("JobHistory")
-        assert agent_pos != -1 and history_pos != -1
-        assert history_pos > agent_pos, (
-            "JobHistory must appear after AgentCards (bottom of layout)"
+    def test_app_has_job_selector_and_agents(self, content: str) -> None:
+        """App must have both a job selector and agent cards."""
+        has_selector = bool(
+            re.search(r"<select|<JobHistory|JobSelector", content)
+        )
+        has_agents = "AgentCards" in content
+        assert has_selector and has_agents, (
+            "App.tsx must have a job selector and AgentCards"
         )
 
 

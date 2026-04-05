@@ -28,6 +28,20 @@ class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SubTaskOut(BaseModel):
+    """Subtask within a parent task."""
+
+    id: str
+    title: str
+    description: str
+    status: str
+    acceptance_criteria: list[str]
+    depends_on: list[str]
+    failure_issue: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskOut(BaseModel):
     """Task returned from job detail endpoint."""
 
@@ -39,6 +53,7 @@ class TaskOut(BaseModel):
     failure_issue: int | None = None
     acceptance_criteria: list[str]
     depends_on: list[str]
+    subtasks: list[SubTaskOut] = []
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -10,6 +10,7 @@ import os
 
 import httpx
 
+from factory.dashboard.db import upsert_job
 from factory.dashboard.models import EventIn
 
 LOG = logging.getLogger(__name__)
@@ -49,8 +50,13 @@ class EventEmitter:
                 exc,
             )
 
-    async def emit_job_started(self, repo: str, issue_number: int) -> None:
-        """Emit job_started event."""
+    async def emit_job_started(
+        self,
+        repo: str,
+        issue_number: int,
+        task_count: int = 0,
+    ) -> None:
+        """Emit job_started event and persist job to DB."""
         task_id = f"{repo}#{issue_number}"
         event = EventIn(
             task_id=task_id,
@@ -58,9 +64,19 @@ class EventEmitter:
             status="pending",
         )
         await self._post_event(event)
+        try:
+            await upsert_job(
+                job_id=task_id,
+                repo_name=repo,
+                issue_number=issue_number,
+                status="in_progress",
+                task_count=task_count,
+            )
+        except Exception as exc:
+            LOG.error("Failed to persist job to DB: %s", exc)
 
     async def emit_job_completed(self, repo: str, issue_number: int) -> None:
-        """Emit job_completed event."""
+        """Emit job_completed event and update DB."""
         task_id = f"{repo}#{issue_number}"
         event = EventIn(
             task_id=task_id,
@@ -68,9 +84,18 @@ class EventEmitter:
             status="success",
         )
         await self._post_event(event)
+        try:
+            await upsert_job(
+                job_id=task_id,
+                repo_name=repo,
+                issue_number=issue_number,
+                status="completed",
+            )
+        except Exception as exc:
+            LOG.error("Failed to update job in DB: %s", exc)
 
     async def emit_job_failed(self, repo: str, issue_number: int) -> None:
-        """Emit job_failed event."""
+        """Emit job_failed event and update DB."""
         task_id = f"{repo}#{issue_number}"
         event = EventIn(
             task_id=task_id,
@@ -78,6 +103,37 @@ class EventEmitter:
             status="failure",
         )
         await self._post_event(event)
+        try:
+            await upsert_job(
+                job_id=task_id,
+                repo_name=repo,
+                issue_number=issue_number,
+                status="failed",
+            )
+        except Exception as exc:
+            LOG.error("Failed to update job in DB: %s", exc)
+
+    async def update_job_tasks(
+        self,
+        repo: str,
+        issue_number: int,
+        task_count: int,
+        completed_task_count: int,
+        tasks_json: str = "[]",
+    ) -> None:
+        """Update job task counts in DB (no event emitted)."""
+        job_id = f"{repo}#{issue_number}"
+        try:
+            await upsert_job(
+                job_id=job_id,
+                repo_name=repo,
+                issue_number=issue_number,
+                task_count=task_count,
+                completed_task_count=completed_task_count,
+                tasks_json=tasks_json,
+            )
+        except Exception as exc:
+            LOG.error("Failed to update job tasks in DB: %s", exc)
 
     async def emit_agent_spawned(self, task_id: str, agent_type: str) -> None:
         """Emit agent_spawned event."""

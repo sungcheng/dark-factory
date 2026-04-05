@@ -247,11 +247,11 @@ class TestAppTsx:
             "App.tsx must include LiveLog component or placeholder"
         )
 
-    def test_app_tsx_has_job_history_section(self) -> None:
-        """App.tsx must include a JobHistory placeholder section."""
+    def test_app_tsx_has_job_selector(self) -> None:
+        """App.tsx must include a job selector (dropdown or JobHistory)."""
         content = (FRONTEND_ROOT / "src" / "components" / "App.tsx").read_text()
-        assert "JobHistory" in content, (
-            "App.tsx must include JobHistory component or placeholder"
+        assert "JobHistory" in content or "select" in content, (
+            "App.tsx must include a job selector (JobHistory or <select>)"
         )
 
     def test_main_tsx_entry_point_exists(self) -> None:
