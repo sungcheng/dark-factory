@@ -92,11 +92,13 @@ async def run_generator(
     # Inject guardrails
     tech_stack = detect_tech_stack(working_dir)
     guardrail_sections = "\n\n".join(
-        s for s in [
+        s
+        for s in [
             tech_stack.as_guardrail_prompt(),
             generate_file_boundary_prompt(task_title),
             generate_dependency_prompt(working_dir),
-        ] if s
+        ]
+        if s
     )
 
     prompt = (

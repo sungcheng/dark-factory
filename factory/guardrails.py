@@ -227,15 +227,26 @@ def scan_for_secrets(working_dir: str) -> list[SecretFinding]:
         if not filepath.is_file():
             continue
         skip_suffixes = {
-            ".png", ".jpg", ".gif", ".ico", ".svg",
-            ".lock", ".woff", ".woff2", ".ttf", ".eot",
+            ".png",
+            ".jpg",
+            ".gif",
+            ".ico",
+            ".svg",
+            ".lock",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
         }
         if filepath.suffix in skip_suffixes:
             continue
         rel = str(filepath.relative_to(root))
         skip_dirs = {
-            "node_modules", ".git", "__pycache__",
-            ".venv", "venv",
+            "node_modules",
+            ".git",
+            "__pycache__",
+            ".venv",
+            "venv",
         }
         if any(skip in rel for skip in skip_dirs):
             continue
@@ -243,12 +254,14 @@ def scan_for_secrets(working_dir: str) -> list[SecretFinding]:
             continue
         # Only scan .env if it exists (it shouldn't be committed)
         if filepath.name == ".env":
-            findings.append(SecretFinding(
-                file_path=rel,
-                line_number=0,
-                pattern_name=".env file",
-                line_preview=".env file should not be committed",
-            ))
+            findings.append(
+                SecretFinding(
+                    file_path=rel,
+                    line_number=0,
+                    pattern_name=".env file",
+                    line_preview=".env file should not be committed",
+                )
+            )
             continue
 
         try:
@@ -261,17 +274,24 @@ def scan_for_secrets(working_dir: str) -> list[SecretFinding]:
                 if pattern.search(line):
                     # Skip test files and example configs
                     low = rel.lower()
-                    if any(s in low for s in (
-                        "test", "mock", "fixture",
-                    )):
+                    if any(
+                        s in low
+                        for s in (
+                            "test",
+                            "mock",
+                            "fixture",
+                        )
+                    ):
                         continue
                     preview = line.strip()[:80]
-                    findings.append(SecretFinding(
-                        file_path=rel,
-                        line_number=line_num,
-                        pattern_name=pattern_name,
-                        line_preview=preview,
-                    ))
+                    findings.append(
+                        SecretFinding(
+                            file_path=rel,
+                            line_number=line_num,
+                            pattern_name=pattern_name,
+                            line_preview=preview,
+                        )
+                    )
 
     if findings:
         LOG.warning(
@@ -321,8 +341,8 @@ PROTECTED_FILES: set[str] = {
 # Protected config files by extension
 PROTECTED_EXTENSIONS: set[str] = {
     ".toml",  # pyproject.toml, etc.
-    ".cfg",   # setup.cfg
-    ".ini",   # tox.ini, etc.
+    ".cfg",  # setup.cfg
+    ".ini",  # tox.ini, etc.
 }
 
 
@@ -400,9 +420,7 @@ def check_dependencies(working_dir: str) -> list[DependencyIssue]:
     declared_deps: set[str] = set()
 
     # Check pyproject.toml
-    dep_pattern = (
-        r'"([a-zA-Z0-9_-]+)(?:\[.*?\])?(?:[><=!~].*?)?"'
-    )
+    dep_pattern = r'"([a-zA-Z0-9_-]+)(?:\[.*?\])?(?:[><=!~].*?)?"'
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
         content = pyproject.read_text()
@@ -416,6 +434,7 @@ def check_dependencies(working_dir: str) -> list[DependencyIssue]:
         if pkg.is_file():
             try:
                 import json
+
                 data = json.loads(pkg.read_text())
                 for section in ("dependencies", "devDependencies"):
                     for dep_name in data.get(section, {}):
@@ -427,13 +446,15 @@ def check_dependencies(working_dir: str) -> list[DependencyIssue]:
     for category, competitors in _COMPETING_PACKAGES.items():
         found = [c for c in competitors if c.replace("-", "_") in declared_deps]
         if len(found) > 1:
-            issues.append(DependencyIssue(
-                severity="warning",
-                message=(
-                    f"Competing {category} packages detected: "
-                    f"{', '.join(found)}. Pick one and remove the others."
-                ),
-            ))
+            issues.append(
+                DependencyIssue(
+                    severity="warning",
+                    message=(
+                        f"Competing {category} packages detected: "
+                        f"{', '.join(found)}. Pick one and remove the others."
+                    ),
+                )
+            )
 
     return issues
 
@@ -446,9 +467,7 @@ def generate_dependency_prompt(working_dir: str) -> str:
     # Detect existing deps to tell agents what's available
     existing_deps: list[str] = []
     pyproject = root / "pyproject.toml"
-    dep_pat = (
-        r'"([a-zA-Z0-9_-]+)(?:\[.*?\])?(?:[><=!~].*?)?"'
-    )
+    dep_pat = r'"([a-zA-Z0-9_-]+)(?:\[.*?\])?(?:[><=!~].*?)?"'
     if pyproject.is_file():
         content = pyproject.read_text()
         for match in re.finditer(dep_pat, content):
@@ -501,7 +520,8 @@ async def check_regression_scope(
 
     # Check for suspicious patterns in changed files
     suspicious = [
-        f for f in changed_files
+        f
+        for f in changed_files
         if any(s in f for s in ["Makefile", "pyproject.toml", "docker", "ci.yml"])
     ]
     if suspicious:
@@ -600,9 +620,7 @@ def run_preflight_checks(working_dir: str) -> PreFlightResult:
     # .env committed is blocking
     env_files = [s for s in secrets if s.pattern_name == ".env file"]
     if env_files:
-        blocking.append(
-            ".env file found in repo. Remove it and add to .gitignore."
-        )
+        blocking.append(".env file found in repo. Remove it and add to .gitignore.")
 
     # Dependency errors are blocking, warnings are not
     dep_errors = [d for d in dep_issues if d.severity == "error"]
