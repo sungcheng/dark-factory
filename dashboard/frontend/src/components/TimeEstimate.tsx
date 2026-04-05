@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Event, Task } from "../types";
 
 interface TimeEstimateProps {
@@ -34,6 +34,18 @@ function getJobStartTime(events: Event[]): Date | null {
   }
   return null;
 }
+
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/** Minimum task duration to count as real work (not a skip). */
+const MIN_TASK_DURATION = 30;
 
 function getTaskDurations(events: Event[]): number[] {
   // Find pairs of task_started → task_completed for same task_id
@@ -73,6 +85,8 @@ export function TimeEstimate({
   jobStatus,
 }: TimeEstimateProps): React.ReactElement {
   const [now, setNow] = useState(Date.now());
+  // Track the lowest estimate so it never increases
+  const lowestEstimate = useRef<number | null>(null);
 
   // Update "now" every second for live elapsed time
   useEffect(() => {
@@ -81,8 +95,17 @@ export function TimeEstimate({
     return () => clearInterval(interval);
   }, [jobStatus]);
 
+  // Reset floor when job changes
+  useEffect(() => {
+    lowestEstimate.current = null;
+  }, [tasks.length]);
+
   const startTime = getJobStartTime(events);
-  const completedDurations = getTaskDurations(events);
+  const allDurations = getTaskDurations(events);
+  // Filter out skipped tasks (< 30s) for estimation
+  const realDurations = allDurations.filter(
+    (d) => d >= MIN_TASK_DURATION,
+  );
 
   const completedCount = tasks.filter(
     (t) => t.status === "completed" || t.status === "success",
@@ -95,15 +118,23 @@ export function TimeEstimate({
   // Elapsed time
   const elapsed = startTime ? (now - startTime.getTime()) / 1000 : 0;
 
-  // Average time per completed task
-  const avgTaskTime =
-    completedDurations.length > 0
-      ? completedDurations.reduce((a, b) => a + b, 0) /
-        completedDurations.length
-      : 0;
+  // Median time per real task (ignores skips and outliers)
+  const medianTaskTime =
+    realDurations.length > 0 ? median(realDurations) : 0;
 
-  // Estimated remaining
-  const estimatedRemaining = avgTaskTime > 0 ? pendingCount * avgTaskTime : 0;
+  // Estimated remaining — monotonically decreasing (never goes up)
+  let estimatedRemaining =
+    medianTaskTime > 0 ? pendingCount * medianTaskTime : 0;
+  if (estimatedRemaining > 0) {
+    if (
+      lowestEstimate.current === null ||
+      estimatedRemaining < lowestEstimate.current
+    ) {
+      lowestEstimate.current = estimatedRemaining;
+    } else {
+      estimatedRemaining = lowestEstimate.current;
+    }
+  }
 
   if (events.length === 0 || !startTime) {
     return <div className="text-xs text-gray-500">Waiting for events...</div>;
@@ -126,7 +157,7 @@ export function TimeEstimate({
           <div className="flex items-center gap-1.5">
             <span className="text-gray-500">Est. remaining:</span>
             <span className="text-yellow-300 font-mono">
-              {avgTaskTime > 0
+              {medianTaskTime > 0
                 ? formatDuration(estimatedRemaining)
                 : `~${pendingCount * 5}–${pendingCount * 10}m`}
             </span>
@@ -134,14 +165,14 @@ export function TimeEstimate({
         </>
       )}
 
-      {/* Avg per task (once we have data) */}
-      {completedDurations.length > 0 && (
+      {/* Median per task (once we have real data) */}
+      {realDurations.length > 0 && (
         <>
           <span className="text-gray-600">|</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Avg/task:</span>
+            <span className="text-gray-500">Median/task:</span>
             <span className="text-gray-300 font-mono">
-              {formatDuration(avgTaskTime)}
+              {formatDuration(medianTaskTime)}
             </span>
           </div>
         </>
