@@ -460,6 +460,8 @@ async def _process_task(
 
         # Check result
         approved_path = Path(ctx.working_dir) / "approved.md"
+        feedback_path = Path(ctx.working_dir) / "feedback.md"
+
         if approved_path.exists():
             LOG.info("  GREEN — task approved on round %d", round_num)
             task.status = "completed"
@@ -468,6 +470,15 @@ async def _process_task(
                 github.close_issue(ctx.repo_name, task.issue_number)
             save_state(state)
             return
+
+        if not feedback_path.exists():
+            # QA crashed without writing feedback — generate a default
+            LOG.warning("  QA Review didn't write feedback or approved — running tests directly")
+            test_result = await _run_tests(ctx.working_dir)
+            feedback_path.write_text(
+                f"# Feedback — Round {round_num}\n\n"
+                f"QA Review agent crashed. Test output:\n\n```\n{test_result}\n```\n"
+            )
 
         LOG.warning("  RED — round %d failed", round_num)
 
@@ -582,6 +593,18 @@ async def _push_changes(ctx: JobContext) -> None:
         stderr=asyncio.subprocess.PIPE,
     )
     await proc.communicate()
+
+
+async def _run_tests(working_dir: str) -> str:
+    """Run make test directly and return output."""
+    proc = await asyncio.create_subprocess_exec(
+        "make", "test",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+    return stdout.decode()[-2000:]  # Last 2000 chars of test output
 
 
 def _cleanup_artifacts(working_dir: str) -> None:
