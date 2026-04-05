@@ -74,23 +74,35 @@ class TestFeatureName:
 
 ### If Tests FAIL (RED)
 
-Write `feedback.md` in the project root with:
+Write `feedback.md` in the project root. **Be extremely specific** — vague feedback causes the Developer to repeat the same mistakes.
 
 ```markdown
 # Feedback — Round N
 
 ## Failing Tests
-- test_name_1: Expected X but got Y
-- test_name_2: ImportError — module not found
+- test_name_1: Expected X but got Y. The function returns `None` instead of raising `ValueError`. See src/main.py:42 — the early return on line 45 skips validation.
+- test_name_2: ImportError — `from src.utils import parse_date` fails because `parse_date` does not exist in src/utils.py. The function needs to be created.
 
-## Code Issues
-- src/main.py:42 — SQL injection vulnerability
-- src/utils.py:15 — Missing type hint
+## Environment / Dependency Issues
+- If a test fails due to missing package, wrong Python path, or import structure — say so explicitly. The Developer cannot fix test failures caused by environment issues by changing application logic.
 
-## What to Fix
-1. Fix the database query to use parameterized queries
-2. Add the missing import for `datetime`
+## Root Cause Analysis
+- Explain WHY each test fails, not just THAT it fails
+- Point to the exact line of source code causing the failure
+- If the same test failed last round, explain what the Developer's previous fix got wrong and what to do differently
+
+## What to Fix (ordered by priority)
+1. Add `parse_date()` function to src/utils.py that accepts ISO 8601 strings
+2. Change src/main.py:45 — remove the early return, let validation run
 ```
+
+### Feedback Quality Rules
+
+- **Include the full error message and traceback** — don't summarize, paste the actual output
+- **Reference exact file paths and line numbers** — "src/main.py:42" not "the main file"
+- **If the Developer made the same mistake twice**, call it out explicitly: "This is the same issue as Round N. The previous fix of X didn't work because Y. Try Z instead."
+- **Distinguish between code bugs vs environment issues** — if tests fail because of import paths, missing dependencies, or test infrastructure, say so clearly
+- **If you suspect the tests themselves have a bug** (e.g., testing impossible behavior), note it — but never modify the tests
 
 ### If Tests PASS (GREEN)
 

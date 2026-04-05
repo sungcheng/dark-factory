@@ -288,7 +288,7 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 | Developer CANNOT edit test files | Prevents weakening tests to pass |
 | QA CANNOT edit source files | Clean separation of concerns |
 | Each agent gets fresh context | No memory bleed between agents |
-| Max 5 red-green rounds per task | Prevents infinite loops |
+| Max 5 red-green rounds per task | Progressive escalation, then auto-retry on re-run |
 | Agents communicate through files | Artifacts survive context resets |
 | Regression gate before new work | Existing tests must pass first |
 | Never migrate tech stack | Agents must extend, not replace |

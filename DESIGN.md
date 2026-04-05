@@ -69,7 +69,27 @@ Auto-merge → CI/CD → Deploy
 | Evaluator CANNOT edit source files | Clean separation of concerns |
 | Each agent gets fresh context | No memory bleed, no context rot |
 | Agents communicate through files | Artifacts survive context resets |
-| Max 5 red-green rounds | Prevents infinite loops, escalates to human |
+| Max 5 red-green rounds | Prevents infinite loops, escalates with progressive strategy |
+
+### Progressive Escalation Strategy
+
+Not all failures are equal. The orchestrator escalates through increasingly aggressive strategies:
+
+| Round | Strategy | Why |
+|---|---|---|
+| 1-3 | Normal red-green | Developer gets QA feedback, iterates |
+| 4 | Enhanced feedback | QA includes full tracebacks, root cause analysis, explicit "don't repeat X" |
+| 5 | Fresh approach | Developer prompted to try a fundamentally different approach, not patch the previous one |
+| Re-run | Auto-reset | Failed tasks reset to pending with fresh 5 rounds — re-running the job retries automatically |
+
+### Common Failure Modes
+
+| Failure Mode | Root Cause | How Agents Handle It |
+|---|---|---|
+| **Vague QA feedback** | QA says "test failed" without specifics | QA prompt requires exact file:line references, full error output, and root cause analysis |
+| **Developer repeats same mistake** | Doesn't read feedback carefully | Developer prompt: if Round 2+, must try a different approach. QA calls out repeated failures explicitly |
+| **Environment/dependency issue** | Wrong import path, missing package, version mismatch | QA must distinguish code bugs from environment issues. Developer checks project structure before changing logic |
+| **Impossible test** | Test expects behavior that conflicts with requirements | QA notes suspected test issues in feedback (but never modifies tests). Escalates to human via needs-human issue |
 
 ## 5. How Agents Run
 

@@ -62,6 +62,20 @@ If `feedback.md` exists from a previous round, read it carefully:
 - Don't introduce new issues while fixing old ones
 - Delete `feedback.md` after addressing all issues (QA will write a new one if needed)
 
+### Breaking Out of Repeated Failures
+
+If you've seen feedback before (Round 2+), **do not repeat the same approach that already failed**:
+
+1. **Read the full error traceback** — don't skim it, understand the actual failure
+2. **Check if the issue is environmental** — wrong import path, missing dependency, incorrect project structure. If so, fix the environment, not the logic.
+3. **If your previous fix didn't work**, try a fundamentally different approach:
+   - Different algorithm or data structure
+   - Different library or API
+   - Restructure the module instead of patching it
+4. **Run the specific failing test** before running the full suite: `pytest tests/test_foo.py::test_specific_case -v`
+5. **Read the test code** — understand exactly what the test expects, what it mocks, what fixtures it uses. The test defines the contract.
+6. **Check for version/compatibility issues** — if a dependency API changed, read the installed version's docs, not the latest
+
 ## What You CANNOT Do
 
 - **NEVER edit files in `tests/`** — the QA Engineer owns test files
