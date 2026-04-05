@@ -278,7 +278,7 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 - **Phase 1** — Factory core (orchestrator, agents, CLI) ✅
 - **Phase 2** — CI/CD for dark-factory (GitHub Actions — lint + tests) ✅
 - **Phase 3** — Mission Control dashboard (Status API + React frontend) ✅
-- **Phase 4** — CI/CD for built projects (Dockerfile, Docker Compose, deploy)
+- **Phase 4** — Deployable projects (Docker Compose staging/prod) ✅
 - **Phase 5** — Kubernetes (k3d + ArgoCD)
 
 See [DESIGN.md](DESIGN.md) for the full architecture.
