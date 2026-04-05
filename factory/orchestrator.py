@@ -76,7 +76,8 @@ async def run_job(
         if regression_fail.exists():
             LOG.error("💥 Regression gate FAILED — existing tests are broken")
             raise RuntimeError(
-                "Regression gate failed. Fix existing tests before adding new features. "
+                "Regression gate failed. "
+                "Fix existing tests before adding new features. "
                 f"See: {regression_fail}"
             )
         _cleanup_file(ctx.working_dir, "regression-pass.md")
@@ -118,7 +119,10 @@ async def run_job(
                 LOG.error("Architect failed (stdout): %s", planner_result.stdout[:500])
                 raise RuntimeError("Architect agent failed")
             if not planner_result.success:
-                LOG.warning("Architect exited with error but tasks.json exists — continuing")
+                LOG.warning(
+                "Architect exited with error but "
+                "tasks.json exists — continuing"
+            )
 
             ctx.tasks = _load_tasks(ctx.working_dir)
             ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
@@ -215,7 +219,11 @@ async def run_job(
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
-        LOG.info("✅ All %d tasks complete. Issue #%d closed.", len(completed), issue_number)
+        LOG.info(
+            "✅ All %d tasks complete. Issue #%d closed.",
+            len(completed),
+            issue_number,
+        )
 
 
 async def retry_job(
@@ -256,10 +264,16 @@ async def retry_job(
                 human_guidance = "\n\n".join(comments)
                 LOG.info("Found human guidance for task '%s'", task.title)
             else:
-                LOG.warning("No comments on failure issue #%d — retrying without guidance", task.failure_issue)
+                LOG.warning(
+                    "No comments on failure issue #%d"
+                    " — retrying without guidance",
+                    task.failure_issue,
+                )
 
         task.status = "pending"
-        await _process_task_with_guidance(task, ctx, github, model, state, human_guidance)
+        await _process_task_with_guidance(
+            task, ctx, github, model, state, human_guidance
+        )
 
     still_failed = [t for t in ctx.tasks if t.status == "failed"]
 
@@ -276,7 +290,10 @@ async def retry_job(
                     f"```\n{feedback}\n```"
                 )
         save_state(state)
-        LOG.warning("Retry failed. %d task(s) still need human input.", len(still_failed))
+        LOG.warning(
+            "Retry failed. %d task(s) still need human input.",
+            len(still_failed),
+        )
     else:
         if state.pr_number:
             repo = github.get_repo(repo_name)
@@ -510,7 +527,9 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
     """Load tasks.json written by the Architect."""
     tasks_path = Path(working_dir) / "tasks.json"
     if not tasks_path.exists():
-        raise FileNotFoundError(f"Architect didn't create tasks.json in {working_dir}")
+        raise FileNotFoundError(
+            f"Architect didn't create tasks.json in {working_dir}"
+        )
 
     raw = json.loads(tasks_path.read_text())
     return [
@@ -539,7 +558,10 @@ def _is_simple_issue(title: str, body: str) -> bool:
     Simple issues: bug fixes, single endpoints, config changes,
     small features that don't need task decomposition.
     """
-    simple_keywords = ["fix", "bug", "typo", "rename", "update", "add endpoint", "remove", "bump"]
+    simple_keywords = [
+        "fix", "bug", "typo", "rename", "update",
+        "add endpoint", "remove", "bump",
+    ]
     text = f"{title} {body}".lower()
 
     # Short body = simple issue
@@ -733,7 +755,7 @@ async def _check_claude_cli() -> None:
         raise RuntimeError(
             "claude CLI not found. Install it: https://docs.anthropic.com/en/docs/claude-code"
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise RuntimeError("claude CLI health check timed out after 30s")
 
     if proc.returncode != 0:

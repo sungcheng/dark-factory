@@ -106,7 +106,8 @@ async def run_evaluator_regression(
     """
     prompt = (
         "You are the QA Engineer. Run the existing test suite with `make test`. "
-        "If there are no tests yet, write `regression-pass.md` with 'No existing tests.' "
+        "If there are no tests yet, write `regression-pass.md` "
+        "with 'No existing tests.' "
         "If all tests pass, write `regression-pass.md` with the test output. "
         "If any tests FAIL, write `regression-fail.md` with the failure details. "
         "Do NOT write any code. Do NOT modify any files except the regression report."

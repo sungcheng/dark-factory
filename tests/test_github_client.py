@@ -62,6 +62,9 @@ class TestJobContext:
         ctx1 = JobContext(repo_name="a", issue_number=1)
         ctx2 = JobContext(repo_name="b", issue_number=2)
         ctx1.tasks.append(
-            TaskInfo(id="t1", title="X", description="", acceptance_criteria=[], depends_on=[])
+            TaskInfo(
+                id="t1", title="X", description="",
+                acceptance_criteria=[], depends_on=[],
+            )
         )
         assert len(ctx2.tasks) == 0

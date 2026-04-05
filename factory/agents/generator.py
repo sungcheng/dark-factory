@@ -94,11 +94,11 @@ async def run_generator(
             f"---\n\n"
             if human_guidance else ""
         )
-        + f"1. Read the failing tests in `tests/`\n"
-        f"2. Write code in `src/` to make all tests pass\n"
-        f"3. Run `make test` to verify\n"
-        f"4. Run `make check` to verify lint/types\n"
-        f"5. Do NOT modify any files in `tests/`"
+        + "1. Read the failing tests in `tests/`\n"
+        "2. Write code in `src/` to make all tests pass\n"
+        "3. Run `make test` to verify\n"
+        "4. Run `make check` to verify lint/types\n"
+        "5. Do NOT modify any files in `tests/`"
     )
 
     config = AgentConfig(

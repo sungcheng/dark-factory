@@ -13,7 +13,10 @@ class TestGetReadyBatches:
     def test_single_task_no_deps(self) -> None:
         """A single task with no dependencies yields one batch."""
         tasks = [
-            TaskInfo(id="t1", title="Setup", description="", acceptance_criteria=[], depends_on=[]),
+            TaskInfo(
+                id="t1", title="Setup", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 1
@@ -22,9 +25,18 @@ class TestGetReadyBatches:
     def test_sequential_tasks(self) -> None:
         """Tasks that depend on each other run sequentially."""
         tasks = [
-            TaskInfo(id="t1", title="First", description="", acceptance_criteria=[], depends_on=[]),
-            TaskInfo(id="t2", title="Second", description="", acceptance_criteria=[], depends_on=["t1"]),
-            TaskInfo(id="t3", title="Third", description="", acceptance_criteria=[], depends_on=["t2"]),
+            TaskInfo(
+                id="t1", title="First", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
+            TaskInfo(
+                id="t2", title="Second", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
+            TaskInfo(
+                id="t3", title="Third", description="",
+                acceptance_criteria=[], depends_on=["t2"],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 3
@@ -35,9 +47,18 @@ class TestGetReadyBatches:
     def test_parallel_tasks(self) -> None:
         """Tasks with same dependency run in parallel."""
         tasks = [
-            TaskInfo(id="t1", title="Setup", description="", acceptance_criteria=[], depends_on=[]),
-            TaskInfo(id="t2", title="Health", description="", acceptance_criteria=[], depends_on=["t1"]),
-            TaskInfo(id="t3", title="Client", description="", acceptance_criteria=[], depends_on=["t1"]),
+            TaskInfo(
+                id="t1", title="Setup", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
+            TaskInfo(
+                id="t2", title="Health", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
+            TaskInfo(
+                id="t3", title="Client", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 2
@@ -47,10 +68,23 @@ class TestGetReadyBatches:
     def test_diamond_dependency(self) -> None:
         """Diamond pattern: t1 -> t2,t3 -> t4."""
         tasks = [
-            TaskInfo(id="t1", title="Setup", description="", acceptance_criteria=[], depends_on=[]),
-            TaskInfo(id="t2", title="A", description="", acceptance_criteria=[], depends_on=["t1"]),
-            TaskInfo(id="t3", title="B", description="", acceptance_criteria=[], depends_on=["t1"]),
-            TaskInfo(id="t4", title="Final", description="", acceptance_criteria=[], depends_on=["t2", "t3"]),
+            TaskInfo(
+                id="t1", title="Setup", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
+            TaskInfo(
+                id="t2", title="A", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
+            TaskInfo(
+                id="t3", title="B", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
+            TaskInfo(
+                id="t4", title="Final", description="",
+                acceptance_criteria=[],
+                depends_on=["t2", "t3"],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 3
@@ -61,9 +95,18 @@ class TestGetReadyBatches:
     def test_all_independent(self) -> None:
         """Tasks with no dependencies all run in one batch."""
         tasks = [
-            TaskInfo(id="t1", title="A", description="", acceptance_criteria=[], depends_on=[]),
-            TaskInfo(id="t2", title="B", description="", acceptance_criteria=[], depends_on=[]),
-            TaskInfo(id="t3", title="C", description="", acceptance_criteria=[], depends_on=[]),
+            TaskInfo(
+                id="t1", title="A", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
+            TaskInfo(
+                id="t2", title="B", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
+            TaskInfo(
+                id="t3", title="C", description="",
+                acceptance_criteria=[], depends_on=[],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 1
@@ -72,8 +115,14 @@ class TestGetReadyBatches:
     def test_deadlock_raises(self) -> None:
         """Circular dependency raises RuntimeError."""
         tasks = [
-            TaskInfo(id="t1", title="A", description="", acceptance_criteria=[], depends_on=["t2"]),
-            TaskInfo(id="t2", title="B", description="", acceptance_criteria=[], depends_on=["t1"]),
+            TaskInfo(
+                id="t1", title="A", description="",
+                acceptance_criteria=[], depends_on=["t2"],
+            ),
+            TaskInfo(
+                id="t2", title="B", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
         ]
         with pytest.raises(RuntimeError, match="Deadlock"):
             list(get_ready_batches(tasks))
@@ -86,8 +135,15 @@ class TestGetReadyBatches:
     def test_skip_completed_tasks(self) -> None:
         """Already-completed tasks are skipped when resuming."""
         tasks = [
-            TaskInfo(id="t1", title="Done", description="", acceptance_criteria=[], depends_on=[], status="completed"),
-            TaskInfo(id="t2", title="Next", description="", acceptance_criteria=[], depends_on=["t1"]),
+            TaskInfo(
+                id="t1", title="Done", description="",
+                acceptance_criteria=[], depends_on=[],
+                status="completed",
+            ),
+            TaskInfo(
+                id="t2", title="Next", description="",
+                acceptance_criteria=[], depends_on=["t1"],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 1
@@ -96,10 +152,25 @@ class TestGetReadyBatches:
     def test_resume_with_mixed_status(self) -> None:
         """Resume with some completed, some pending."""
         tasks = [
-            TaskInfo(id="t1", title="Done1", description="", acceptance_criteria=[], depends_on=[], status="completed"),
-            TaskInfo(id="t2", title="Done2", description="", acceptance_criteria=[], depends_on=["t1"], status="completed"),
-            TaskInfo(id="t3", title="Pending", description="", acceptance_criteria=[], depends_on=["t2"]),
-            TaskInfo(id="t4", title="Also Pending", description="", acceptance_criteria=[], depends_on=["t2"]),
+            TaskInfo(
+                id="t1", title="Done1", description="",
+                acceptance_criteria=[], depends_on=[],
+                status="completed",
+            ),
+            TaskInfo(
+                id="t2", title="Done2", description="",
+                acceptance_criteria=[],
+                depends_on=["t1"], status="completed",
+            ),
+            TaskInfo(
+                id="t3", title="Pending", description="",
+                acceptance_criteria=[], depends_on=["t2"],
+            ),
+            TaskInfo(
+                id="t4", title="Also Pending",
+                description="",
+                acceptance_criteria=[], depends_on=["t2"],
+            ),
         ]
         batches = list(get_ready_batches(tasks))
         assert len(batches) == 1

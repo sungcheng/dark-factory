@@ -97,9 +97,13 @@ async def run_agent(config: AgentConfig) -> AgentResult:
             proc.communicate(),
             timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         timeout = DEFAULT_TIMEOUTS.get(config.role, 1200)
-        LOG.error("%s agent timed out after %ds — killing process group", config.role, timeout)
+        LOG.error(
+            "%s agent timed out after %ds — killing process group",
+            config.role,
+            timeout,
+        )
         # Kill the entire process group (agent + all child processes like pytest)
         try:
             os.killpg(proc.pid, signal.SIGTERM)
@@ -122,7 +126,11 @@ async def run_agent(config: AgentConfig) -> AgentResult:
             denials = data.get("permission_denials", [])
             result_text = data.get("result", "")[:200]
             if reason == "completed" and not denials:
-                LOG.info("  %s completed (exit code 1 is a CLI quirk): %s", config.role, result_text)
+                LOG.info(
+                    "  %s completed (exit code 1 is a CLI quirk): %s",
+                    config.role,
+                    result_text,
+                )
             else:
                 LOG.warning(
                     "  ⚠️ %s — reason: %s, denials: %d, result: %s",

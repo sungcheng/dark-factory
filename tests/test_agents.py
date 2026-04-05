@@ -1,9 +1,9 @@
 """Tests for agent base — config, results, prompt loading."""
 from __future__ import annotations
 
+from factory.agents.base import DEFAULT_MODELS
 from factory.agents.base import AgentConfig
 from factory.agents.base import AgentResult
-from factory.agents.base import DEFAULT_MODELS
 from factory.agents.base import load_prompt
 from factory.agents.base import parse_agent_output
 
@@ -60,7 +60,14 @@ class TestDefaultModels:
 
     def test_all_roles_have_defaults(self) -> None:
         """All agent roles have default models."""
-        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "QA Engineer (Contracts)", "QA Engineer (Regression)", "Developer"}
+        expected_roles = {
+            "Architect",
+            "QA Engineer (RED)",
+            "QA Engineer (Review)",
+            "QA Engineer (Contracts)",
+            "QA Engineer (Regression)",
+            "Developer",
+        }
         assert set(DEFAULT_MODELS.keys()) == expected_roles
 
 

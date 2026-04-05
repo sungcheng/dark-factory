@@ -86,7 +86,10 @@ def retry(repo: str, issue: int, model: str | None) -> None:
     default=None,
     help="Override model for all agents",
 )
-@click.option("--parallel", "-p", is_flag=True, help="Process issues in parallel (use when issues are independent)")
+@click.option(
+    "--parallel", "-p", is_flag=True,
+    help="Process issues in parallel (use when issues are independent)",
+)
 def run(repo: str, model: str | None, parallel: bool) -> None:
     """Process all open issues in a repo (sequential by default).
 
@@ -131,7 +134,13 @@ def run(repo: str, model: str | None, parallel: bool) -> None:
         for issue in open_issues:
             click.echo(f"\nProcessing #{issue.number}: {issue.title}")
             try:
-                asyncio.run(run_job(repo_name=repo, issue_number=issue.number, model=model))
+                asyncio.run(
+                    run_job(
+                        repo_name=repo,
+                        issue_number=issue.number,
+                        model=model,
+                    )
+                )
                 click.echo(f"  #{issue.number} completed.")
             except Exception as e:
                 click.echo(f"  #{issue.number} failed: {e}", err=True)
@@ -175,14 +184,20 @@ def repos() -> None:
 @click.option("--body", "-b", default="", help="Issue body (or use --editor)")
 @click.option("--editor", "-e", is_flag=True, help="Open editor to write issue body")
 @click.option("--label", "-l", multiple=True, help="Labels to add (repeatable)")
-def create_issue(repo: str, title: str, body: str, editor: bool, label: tuple[str, ...]) -> None:
+def create_issue(
+    repo: str,
+    title: str,
+    body: str,
+    editor: bool,
+    label: tuple[str, ...],
+) -> None:
     """Create a GitHub issue on a repo.
 
     Examples:
-        dark-factory create-issue --repo weather-api --title "Add caching"
-        dark-factory create-issue --repo weather-api --title "Add caching" --editor
-        dark-factory create-issue --repo weather-api --title "Add caching" -b "Cache responses for 5 min"
-        dark-factory create-issue --repo weather-api --title "Add caching" -l enhancement -l priority
+        dark-factory create-issue -r weather-api -t "Add caching"
+        dark-factory create-issue -r weather-api -t "Add caching" --editor
+        dark-factory create-issue -r weather-api -t "Add caching" -b "Cache"
+        dark-factory create-issue -r weather-api -t "Add caching" -l enhancement
     """
     from factory.github_client import GitHubClient
 

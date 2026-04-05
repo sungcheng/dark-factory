@@ -88,98 +88,77 @@ The orchestrator is a **dumb Python script** — it doesn't use AI. It just spaw
 Each agent is a Claude Code subprocess with its own fresh context window. The orchestrator controls which tools each agent can access — this is how we enforce the hard boundaries (Generator can't touch tests, Evaluator can't touch source).
 
 ```python
-# factory/orchestrator.py (pseudocode)
+# factory/orchestrator.py (pseudocode — actual code is async)
 
-def run_job(issue_number):
-    """Main orchestrator loop — no AI here, just subprocess management."""
+async def run_job(repo_name, issue_number):
+    """Main orchestrator loop — no AI, just subprocess management."""
+
+    # Step 0: Regression gate — existing tests must pass
+    await run_evaluator_regression(working_dir)
 
     # Step 1: Spawn the Architect
-    run_agent(
-        prompt=f"You are the Architect. Read GitHub issue #{issue_number}. "
-               f"Break it into tasks. Write tasks.json with depends_on fields. "
-               f"Create GitHub sub-issues for each task.",
-        allowed_tools=["github", "read", "write"],
-        working_dir=project_dir,
+    await run_planner(issue_body, working_dir)
+    tasks = load_tasks("tasks.json")
+
+    # Step 2: Process tasks in dependency order
+    for batch in get_ready_batches(tasks):
+        # Tasks in same batch run in parallel
+        await asyncio.gather(*[
+            _process_task(task, ctx) for task in batch
+        ])
+
+async def _process_task(task, ctx):
+    """Per-task pipeline: contracts → parallel(tests+scaffold) → red-green."""
+
+    # Create per-task branch from latest main
+    branch = f"factory/issue-{issue}/task-{task.id}"
+
+    # Step 1: QA writes interface contracts (haiku — fast)
+    await run_evaluator_contracts(task, working_dir)
+
+    # Step 2: QA writes tests + Developer scaffolds (parallel)
+    await asyncio.gather(
+        run_evaluator_red(task, working_dir),
+        run_generator_scaffold(task, working_dir),
     )
 
-    # Step 2: Load task plan
-    tasks = json.load(open("tasks.json"))
+    # Step 3: Red-Green loop (max 5 rounds)
+    for round in range(1, 6):
+        await run_generator(task, working_dir)  # Developer writes code
 
-    # Step 3: Process tasks (respecting dependency order)
-    # Tasks with no unmet dependencies run in parallel.
-    # e.g., Task 2 and Task 3 both depend on Task 1 only,
-    # so they run concurrently once Task 1 completes.
-    for batch in get_ready_batches(tasks):
+        # Smart QA: run tests directly first
+        test_passed = await _run_tests_with_check(working_dir)
+        if test_passed:
+            break  # GREEN — skip QA agent entirely
 
-      for task in batch:  # batch runs in parallel (ThreadPoolExecutor)
+        # Tests failed — spawn QA for detailed feedback
+        await run_evaluator_review(task, working_dir)
 
-        # Step 3a: QA Engineer writes failing tests
-        run_agent(
-            prompt=f"You are the QA Engineer. Read the acceptance criteria "
-                   f"for task: {task['title']}. Write failing tests. "
-                   f"Do NOT write any source code. Only write test files.",
-            allowed_tools=["read", "write", "bash"],
-            allowed_paths=["tests/"],  # CAN ONLY WRITE TO tests/
-            working_dir=project_dir,
-        )
+    # Step 4: Push → PR → merge to main
+    github.create_pr(branch, title=f"feat: {task.title}")
+    github.merge_pr(pr_number)
+```
 
-        # Step 3b-3c: Red-Green loop (max 5 rounds)
-        for round in range(1, 6):
+### Per-Role Model and Timeout Selection
 
-            # Developer writes code to pass tests
-            run_agent(
-                prompt=f"You are the Developer. Read the spec and failing "
-                       f"tests. Write code to make all tests pass. "
-                       f"Do NOT modify any test files.",
-                allowed_tools=["read", "write", "edit", "bash"],
-                allowed_paths=["src/"],  # CAN ONLY WRITE TO src/
-                working_dir=project_dir,
-            )
+```python
+DEFAULT_MODELS = {
+    "Architect": "opus",           # Complex planning
+    "Developer": "opus",           # Complex coding
+    "QA Engineer (RED)": "sonnet", # Test writing
+    "QA Engineer (Review)": "sonnet",
+    "QA Engineer (Contracts)": "haiku",   # Fast
+    "QA Engineer (Regression)": "haiku",  # Fast
+}
 
-            # QA Engineer runs tests and reviews
-            result = run_agent(
-                prompt=f"Run all tests with 'make test'. If any fail, write "
-                       f"feedback.md with specific failure details. If all "
-                       f"pass, review code quality and write approved.md.",
-                allowed_tools=["read", "write", "bash"],
-                working_dir=project_dir,
-            )
-
-            if Path("approved.md").exists():
-                break  # GREEN — move to next task
-
-        # Update GitHub Issue
-        github.close_issue(task["issue_number"])
-
-    # Step 4: Open PR and auto-merge
-    github.create_pr(branch, title="feat: complete implementation")
-    github.merge_pr()
-
-
-def get_ready_batches(tasks):
-    """Yield batches of tasks whose dependencies are all complete.
-    Tasks in the same batch can run in parallel."""
-    # Example for a weather API project:
-    #   Batch 1: [Task 1: setup]             (no deps)
-    #   Batch 2: [Task 2: health, Task 3: client]  (both depend on 1)
-    #   Batch 3: [Task 4: weather endpoint]  (depends on 2 + 3)
-    #   Batch 4: [Task 5, Task 6, Task 7]    (all depend on 4, run parallel)
-    completed = set()
-    remaining = list(tasks)
-    while remaining:
-        batch = [t for t in remaining
-                 if all(d in completed for d in t["depends_on"])]
-        yield batch
-        for t in batch:
-            completed.add(t["id"])
-            remaining.remove(t)
-
-
-def run_agent(prompt, allowed_tools, working_dir, allowed_paths=None):
-    """Spawn a Claude Code subprocess with fresh context."""
-    cmd = ["claude", "-p", prompt, "--allowedTools", ",".join(allowed_tools)]
-    subprocess.run(cmd, cwd=working_dir)
-    # Agent exits here — context is gone
+DEFAULT_TIMEOUTS = {
+    "Architect": 1200,             # 20 min
+    "Developer": 1800,             # 30 min
+    "QA Engineer (RED)": 1200,     # 20 min
+    "QA Engineer (Review)": 600,   # 10 min
+    "QA Engineer (Contracts)": 300,# 5 min
+    "QA Engineer (Regression)": 300,# 5 min
+}
 ```
 
 ---
@@ -237,53 +216,43 @@ def run_agent(prompt, allowed_tools, working_dir, allowed_paths=None):
 
 ```
 dark-factory/
-├── CLAUDE.md                          # Global agent rules
+├── CLAUDE.md                          # Global agent rules + coding standards
 ├── README.md
-├── docker-compose.yml                 # Local staging/prod
+├── pyproject.toml                     # uv + hatchling build config
+├── Makefile                           # Dev shortcuts (test, check, format)
 │
 ├── factory/                           # The orchestrator
 │   ├── __init__.py
-│   ├── cli.py                         # claude-factory CLI
-│   ├── orchestrator.py                # Main loop
+│   ├── cli.py                         # CLI — start, run, retry, repos, create-issue
+│   ├── orchestrator.py                # Main loop — task batching, red-green cycle
+│   ├── github_client.py               # GitHub API — issues, PRs, repos
+│   ├── state.py                       # Session state persistence (~/.dark-factory/)
+│   ├── security.py                    # Command allowlisting for target repos
 │   ├── agents/
+│   │   ├── base.py                    # Agent runner (async subprocess spawning)
 │   │   ├── planner.py                 # Spawns Architect
-│   │   ├── evaluator.py               # Spawns QA Engineer
-│   │   └── generator.py               # Spawns Developer
+│   │   ├── evaluator.py               # Spawns QA (contracts, red, review, regression)
+│   │   └── generator.py               # Spawns Developer (scaffold + implementation)
 │   ├── prompts/
 │   │   ├── planner.md                 # Architect personality + rules
 │   │   ├── evaluator.md               # QA Engineer personality + rules
 │   │   └── generator.md               # Developer personality + rules
-│   └── github_client.py               # GitHub Issues integration
+│   └── templates/
+│       ├── __init__.py                # Template engine (apply_template)
+│       └── fastapi/                   # FastAPI project scaffold
 │
-├── status-api/                        # Monitoring backend
-│   ├── main.py                        # FastAPI app
-│   ├── models.py                      # Event models
-│   ├── websocket.py                   # Live streaming
-│   └── Dockerfile
+├── tests/                             # Unit tests (42 passing)
+│   ├── test_orchestrator.py
+│   ├── test_agents.py
+│   ├── test_github_client.py
+│   ├── test_state.py
+│   └── test_security.py
 │
-├── dashboard/                         # Mission Control frontend
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   │   ├── AgentCards.tsx          # Architect/QA/Developer status
-│   │   │   ├── TaskProgress.tsx        # Task list with red/green status
-│   │   │   ├── LiveLog.tsx             # Real-time agent log
-│   │   │   ├── PipelineStatus.tsx      # CI/CD status
-│   │   │   ├── Environments.tsx        # Staging/prod health
-│   │   │   └── DeployButton.tsx        # Manual prod deploy
-│   │   └── hooks/
-│   │       └── useWebSocket.ts         # Live updates
-│   ├── package.json
-│   └── Dockerfile
-│
-├── services/                          # What the factory builds
-│   └── (generated per project)
+├── diagrams/                          # Architecture diagrams
 │
 └── .github/
     └── workflows/
-        ├── ci.yml                     # Test + build + push
-        ├── deploy-staging.yml         # Auto-deploy to staging
-        └── deploy-prod.yml            # Manual trigger for prod
+        └── ci.yml                     # Lint + format + tests
 ```
 
 ---
@@ -788,16 +757,22 @@ Phase 4 (future): Replace with k3d + ArgoCD
 ## 16. CI/CD & Build Phases
 
 ```
-PHASE 1 — Factory Core (Week 1-2)
-├── Orchestrator script (Python)
+PHASE 1 — Factory Core ✅ COMPLETE
+├── Orchestrator (async, task batching, red-green cycle)
 ├── Agent prompts (planner.md, evaluator.md, generator.md)
-├── GitHub Issues integration
-├── claude-factory CLI
-├── Prove: Architect → QA → Developer loop works
-├── Prove: TDD Red-Green cycle works
-└── Deliverable: factory can build a simple API from a GitHub Issue
+├── GitHub Issues integration (sub-issues, PRs, auto-merge)
+├── dark-factory CLI (start, run, retry, repos, create-issue)
+├── Contracts approach (parallel test writing + scaffolding)
+├── Per-task branches and PRs (like a real engineer)
+├── Smart QA (direct test running, skip agent on pass)
+├── Session state persistence for crash recovery
+├── Security policy (command allowlisting)
+├── Project templates (FastAPI scaffold)
+├── CI/CD for dark-factory itself (GitHub Actions)
+├── 42 unit tests passing
+└── Deliverable: factory builds APIs from GitHub Issues
 
-PHASE 2 — CI/CD Pipeline (Week 2-3)
+PHASE 2 — CI/CD Pipeline
 ├── Dockerfile for services
 ├── GitHub Actions workflow (test → build → push)
 ├── Docker Compose for staging + production
@@ -805,8 +780,8 @@ PHASE 2 — CI/CD Pipeline (Week 2-3)
 ├── Manual deploy to production (GitHub button)
 └── Deliverable: merge → auto-deploy to staging works
 
-PHASE 3 — Mission Control Dashboard (Week 3-4)
-├── Status API (FastAPI + PostgreSQL)
+PHASE 3 — Mission Control Dashboard 🔄 IN PROGRESS
+├── Status API (FastAPI + SQLite)
 ├── React dashboard
 ├── Live agent monitoring (WebSocket)
 ├── Agent status cards
@@ -834,7 +809,7 @@ PHASE 4 — Kubernetes (Future)
 ┌────────────────────────────────────────────────────────┐
 │                   MONTHLY COSTS                         │
 ├────────────────────────────┬───────────────────────────┤
-│ Claude Code Max            │ $100.00 (already paying)  │
+│ Claude Code Max            │ $200.00 (already paying)  │
 ├────────────────────────────┼───────────────────────────┤
 │ GitHub (free tier)         │ $0.00                     │
 │ GitHub Actions (2000 min)  │ $0.00                     │
@@ -848,7 +823,7 @@ PHASE 4 — Kubernetes (Future)
 │ ArgoCD                     │ $0.00                     │
 │ k3d                        │ $0.00                     │
 ├────────────────────────────┼───────────────────────────┤
-│ TOTAL                      │ $100.00/mo                │
+│ TOTAL                      │ $200.00/mo                │
 │ (extra beyond Claude Max)  │ $0.00                     │
 └────────────────────────────┴───────────────────────────┘
 ```
