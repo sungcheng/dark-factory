@@ -100,10 +100,13 @@ async def run_job(
             model=model,
         )
 
-        if not planner_result.success:
+        tasks_path = Path(ctx.working_dir) / "tasks.json"
+        if not planner_result.success and not tasks_path.exists():
             LOG.error("Architect failed (stderr): %s", planner_result.stderr)
             LOG.error("Architect failed (stdout): %s", planner_result.stdout[:500])
             raise RuntimeError("Architect agent failed")
+        if not planner_result.success:
+            LOG.warning("Architect exited with error but tasks.json exists — continuing")
 
         # Load tasks and create sub-issues
         ctx.tasks = _load_tasks(ctx.working_dir)
