@@ -52,6 +52,49 @@ async def run_evaluator_red(
     return await run_agent(config)
 
 
+async def run_evaluator_contracts(
+    task_title: str,
+    task_description: str,
+    acceptance_criteria: list[str],
+    working_dir: str,
+    model: str | None = None,
+) -> AgentResult:
+    """Spawn QA Engineer to write interface contracts before tests.
+
+    Writes contracts.md with function signatures, API routes, types,
+    and schemas. This gives the Developer a head start on scaffolding
+    while the full tests are being written.
+    """
+    criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria)
+
+    prompt = (
+        "You are the QA Engineer. Your job is to define the **interface contracts** "
+        "for a task BEFORE writing tests. Write a `contracts.md` file with:\n\n"
+        "1. **Function signatures** — name, parameters, return types\n"
+        "2. **API routes** — method, path, request/response schemas\n"
+        "3. **Types/models** — class names, fields, types\n"
+        "4. **File locations** — where each module should live\n\n"
+        "Be specific and concrete. The Developer will use this to start scaffolding "
+        "while you write the full tests.\n\n"
+        "Do NOT write tests yet. Do NOT write source code. Only write contracts.md.\n\n"
+        f"---\n\n"
+        f"## Task\n"
+        f"**Title**: {task_title}\n\n"
+        f"**Description**: {task_description}\n\n"
+        f"### Acceptance Criteria\n{criteria_text}\n"
+    )
+
+    config = AgentConfig(
+        role="QA Engineer (Contracts)",
+        prompt=prompt,
+        allowed_tools=["Read", "Write", "Glob", "Grep"],
+        working_dir=working_dir,
+        model=model,
+    )
+
+    return await run_agent(config)
+
+
 async def run_evaluator_regression(
     working_dir: str,
     model: str | None = None,

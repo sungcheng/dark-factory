@@ -9,10 +9,12 @@ import json
 import logging
 from pathlib import Path
 
+from factory.agents.evaluator import run_evaluator_contracts
 from factory.agents.evaluator import run_evaluator_red
 from factory.agents.evaluator import run_evaluator_regression
 from factory.agents.evaluator import run_evaluator_review
 from factory.agents.generator import run_generator
+from factory.agents.generator import run_generator_scaffold
 from factory.agents.planner import run_planner
 from factory.github_client import GitHubClient
 from factory.github_client import JobContext
@@ -401,14 +403,32 @@ async def _process_task(
     """Run the full red-green cycle for a single task."""
     LOG.info("Task: %s", task.title)
 
-    # Phase 1: QA writes failing tests (RED)
-    LOG.info("  QA Engineer writing tests...")
-    await run_evaluator_red(
+    # Phase 0: QA writes interface contracts
+    LOG.info("  QA Engineer writing contracts...")
+    await run_evaluator_contracts(
         task_title=task.title,
         task_description=task.description,
         acceptance_criteria=task.acceptance_criteria,
         working_dir=ctx.working_dir,
         model=model,
+    )
+
+    # Phase 1: QA writes tests AND Developer scaffolds (parallel)
+    LOG.info("  QA writing tests + Developer scaffolding (parallel)...")
+    await asyncio.gather(
+        run_evaluator_red(
+            task_title=task.title,
+            task_description=task.description,
+            acceptance_criteria=task.acceptance_criteria,
+            working_dir=ctx.working_dir,
+            model=model,
+        ),
+        run_generator_scaffold(
+            task_title=task.title,
+            task_description=task.description,
+            working_dir=ctx.working_dir,
+            model=model,
+        ),
     )
 
     # Phase 2-3: Red-Green loop
@@ -566,7 +586,7 @@ async def _push_changes(ctx: JobContext) -> None:
 
 def _cleanup_artifacts(working_dir: str) -> None:
     """Remove feedback.md and approved.md between rounds."""
-    for name in ("feedback.md", "approved.md"):
+    for name in ("feedback.md", "approved.md", "contracts.md"):
         _cleanup_file(working_dir, name)
 
 

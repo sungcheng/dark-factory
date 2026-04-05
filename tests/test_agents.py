@@ -59,7 +59,7 @@ class TestDefaultModels:
 
     def test_all_roles_have_defaults(self) -> None:
         """All agent roles have default models."""
-        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "QA Engineer (Regression)", "Developer"}
+        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "QA Engineer (Contracts)", "QA Engineer (Regression)", "Developer"}
         assert set(DEFAULT_MODELS.keys()) == expected_roles
 
 

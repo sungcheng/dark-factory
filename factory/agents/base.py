@@ -15,6 +15,7 @@ DEFAULT_MODELS: dict[str, str] = {
     "Architect": "opus",
     "QA Engineer (RED)": "sonnet",
     "QA Engineer (Review)": "sonnet",
+    "QA Engineer (Contracts)": "sonnet",
     "QA Engineer (Regression)": "sonnet",
     "Developer": "opus",
 }
