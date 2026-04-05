@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dark-factory"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Autonomous AI coding pipeline — spec to deployment with no human code review"
 requires-python = ">=3.11"
 dependencies = [
@@ -29,6 +29,9 @@ dev = [
 
 [project.scripts]
 dark-factory = "factory.cli:main"
+
+[tool.hatch.version]
+path = "factory/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["factory"]

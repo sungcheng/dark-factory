@@ -278,7 +278,59 @@ def create_project(
 @main.command()
 def version() -> None:
     """Show the Dark Factory version."""
-    click.echo("dark-factory v0.1.0")
+    from factory import __version__
+
+    click.echo(f"dark-factory v{__version__}")
+
+
+@main.command()
+@click.option(
+    "--push/--no-push",
+    default=True,
+    help="Push tag to remote (default: yes)",
+)
+def release(push: bool) -> None:
+    """Create a git tag from the current version and push it.
+
+    Reads the version from factory/__init__.py, creates a git tag
+    (e.g., v0.3.0), and optionally pushes it to origin. The GitHub
+    Actions release workflow will then create a GitHub release.
+
+    Example:
+        dark-factory release
+        dark-factory release --no-push
+    """
+    import subprocess
+
+    from factory import __version__
+
+    tag = f"v{__version__}"
+
+    # Check if tag already exists
+    result = subprocess.run(
+        ["git", "tag", "-l", tag],
+        capture_output=True,
+        text=True,
+    )
+    if tag in result.stdout.strip().split("\n"):
+        click.echo(f"Tag {tag} already exists.")
+        return
+
+    # Create tag
+    subprocess.run(
+        ["git", "tag", "-a", tag, "-m", f"Release {tag}"],
+        check=True,
+    )
+    click.echo(f"Created tag: {tag}")
+
+    if push:
+        subprocess.run(
+            ["git", "push", "origin", tag],
+            check=True,
+        )
+        click.echo(f"Pushed {tag} to origin.")
+    else:
+        click.echo(f"Tag created locally. Push with: git push origin {tag}")
 
 
 if __name__ == "__main__":
