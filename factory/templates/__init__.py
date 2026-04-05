@@ -40,8 +40,12 @@ def apply_template(
     variables = variables or {}
     target = Path(target_dir)
 
+    skip_patterns = ("__pycache__", ".ruff_cache", "node_modules", ".git/")
+
     for src_file in template_path.rglob("*"):
-        if src_file.is_dir() or "__pycache__" in str(src_file):
+        if src_file.is_dir():
+            continue
+        if any(p in str(src_file) for p in skip_patterns):
             continue
 
         rel_path = src_file.relative_to(template_path)
@@ -52,7 +56,13 @@ def apply_template(
         if dest_file.exists():
             continue
 
-        content = src_file.read_text()
+        # Skip binary files
+        try:
+            content = src_file.read_text()
+        except UnicodeDecodeError:
+            LOG.debug("Skipping binary file: %s", rel_path)
+            continue
+
         for key, value in variables.items():
             content = content.replace(f"{{{{{key}}}}}", value)
 
