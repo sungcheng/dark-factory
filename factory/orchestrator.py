@@ -710,6 +710,22 @@ async def _run_tests_with_check(
     if test_proc.returncode != 0:
         return False, test_output
 
+    # Auto-fix lint in test files before checking.
+    # QA writes tests and sometimes introduces lint errors
+    # that the Developer cannot fix (test files are off-limits).
+    await asyncio.create_subprocess_exec(
+        "uv", "run", "ruff", "check", "--fix", "tests/",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    await asyncio.create_subprocess_exec(
+        "uv", "run", "ruff", "format", "tests/",
+        cwd=working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
     # Run check (lint + types)
     check_proc = await asyncio.create_subprocess_exec(
         "make",
@@ -718,11 +734,17 @@ async def _run_tests_with_check(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
-    check_stdout, _ = await asyncio.wait_for(check_proc.communicate(), timeout=120)
+    check_stdout, _ = await asyncio.wait_for(
+        check_proc.communicate(), timeout=120,
+    )
     check_output = check_stdout.decode()[-2000:]
 
     if check_proc.returncode != 0:
-        return False, f"Tests passed but lint/type check failed:\n{check_output}"
+        return (
+            False,
+            f"Tests passed but lint/type check failed:\n"
+            f"{check_output}",
+        )
 
     return True, test_output
 
