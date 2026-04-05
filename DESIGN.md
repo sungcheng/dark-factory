@@ -4,8 +4,6 @@
 
 Build an autonomous AI coding pipeline ("dark factory") where AI agents handle the full software development lifecycle — from spec to deployment — with no human code review. The system uses a TDD Red-Green approach with separated agents to ensure quality without human intervention.
 
----
-
 ## 1. Vision
 
 ```
@@ -19,8 +17,6 @@ Build an autonomous AI coding pipeline ("dark factory") where AI agents handle t
 │   Everything in between: autonomous                         │
 └─────────────────────────────────────────────────────────────┘
 ```
-
----
 
 ## 2. Key Design Principles
 
@@ -40,8 +36,6 @@ Build an autonomous AI coding pipeline ("dark factory") where AI agents handle t
 ## 3. Architecture Overview
 
 ![Architecture Overview](diagrams/architecture.png)
-
----
 
 ## 4. The Agent Loop — TDD Red-Green
 
@@ -76,8 +70,6 @@ Auto-merge → CI/CD → Deploy
 | Each agent gets fresh context | No memory bleed, no context rot |
 | Agents communicate through files | Artifacts survive context resets |
 | Max 5 red-green rounds | Prevents infinite loops, escalates to human |
-
----
 
 ## 5. How Agents Run
 
@@ -161,8 +153,6 @@ DEFAULT_TIMEOUTS = {
 }
 ```
 
----
-
 ## 6. Tech Stack
 
 ```
@@ -210,8 +200,6 @@ DEFAULT_TIMEOUTS = {
 └──────────────────┴──────────────────────────────────────────┘
 ```
 
----
-
 ## 7. Project Structure
 
 ```
@@ -254,8 +242,6 @@ dark-factory/
     └── workflows/
         └── ci.yml                     # Lint + format + tests
 ```
-
----
 
 ## 8. Coding Standards
 
@@ -348,8 +334,6 @@ jobs:
           tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
 ```
 
----
-
 ## 9. Secrets & Configuration Management
 
 Secrets (API keys, database credentials, tokens) are never stored in code or git.
@@ -396,8 +380,6 @@ When moving to Kubernetes (Phase 4), secrets migrate to Vault:
 - Automatic secret rotation
 - Audit log of all secret access
 - Free and open source
-
----
 
 ## 10. Security
 
@@ -455,7 +437,65 @@ The Evaluator agent prompt includes these security checks on every PR:
 8. Dependencies pinned to specific versions
 9. Docker image uses non-root user
 
----
+## 10.5. Guardrails (`factory/guardrails.py`)
+
+Pre-flight and runtime checks that protect production repos from agent mistakes.
+
+### Tech Stack Detection
+
+Before any agent spawns, the orchestrator scans the repo for technology markers:
+- **File markers**: `pyproject.toml` (Python), `package.json` (Node), `go.mod` (Go), `main.tf` (Terraform), etc.
+- **Content markers**: parses config files for framework names (FastAPI, React, SQLAlchemy, Tailwind, etc.)
+
+The detected stack is injected into every agent's prompt as a guardrail block:
+- Planner: "Never plan a migration to a different framework"
+- Developer: "Use the existing framework — do not introduce a competing one"
+- QA: "Check that no competing frameworks were introduced"
+
+### Secret Scanning
+
+Scans all source files for hardcoded credentials:
+- AWS keys, GitHub tokens, Slack tokens, JWTs, private keys
+- Generic patterns: `api_key = "..."`, `secret = "..."`, `password = "..."`
+- Committed `.env` files
+
+Runs at two points:
+1. **Pre-flight**: blocks the job if secrets found
+2. **Post-merge**: warns if secrets appeared during development
+
+### File Boundary Enforcement
+
+Feature tasks are restricted from modifying:
+- `CLAUDE.md`, `Makefile`, `.gitignore`
+- CI workflows (`.github/workflows/`)
+- Docker files (`Dockerfile`, `docker-compose.yml`)
+- Config files (`pyproject.toml`, `setup.cfg`, `.ini`)
+
+Infrastructure tasks (scaffolding, CI, Docker) get relaxed boundaries.
+
+### Dependency Guardrails
+
+- Detects competing packages (e.g., `requests` + `httpx`, `Flask` + `FastAPI`)
+- Tells agents what dependencies are already installed
+- Warns on overlapping functionality
+
+### Regression Scope Guard
+
+- Blocks regression fixes that touch more than 5 files (likely a rewrite, not a fix)
+- Blocks fixes that modify infrastructure files
+- Tracks test count before/after a job — blocks if tests decrease
+
+### Pre-Flight Flow
+
+```
+Clone repo → detect tech stack → scan for secrets → check dependencies
+    │              │                    │                    │
+    │              ▼                    ▼                    ▼
+    │         inject into          block if found      warn on issues
+    │         agent prompts
+    ▼
+Run regression gate → start tasks
+```
 
 ## 11. Multi-Project Strategy
 
@@ -479,8 +519,6 @@ Architecture inspired by [coleam00/your-claude-engineer](https://github.com/cole
 - Markdown-defined agent behaviors (changeable without code)
 - Multi-model support (cheap model for simple tasks, powerful model for coding)
 
----
-
 ## 12. Mission Control Dashboard
 
 A real-time dashboard to monitor what every agent is doing.
@@ -499,8 +537,6 @@ A real-time dashboard to monitor what every agent is doing.
 | Environment health | Health check endpoints on staging/prod |
 | Deploy to prod | Triggers GitHub Actions workflow_dispatch |
 | Job history | PostgreSQL event log |
-
----
 
 ## 13. Observability
 
@@ -634,8 +670,6 @@ Sentry catches:
 | Sentry | Free tier (5K errors/mo) |
 | **Total** | **$0** |
 
----
-
 ## 14. Notifications
 
 Don't check the dashboard — let the factory come to you.
@@ -719,8 +753,6 @@ desktop_notify("Dark Factory", "Job complete: weather-api deployed to staging")
 | Service error (Sentry) | ✅ | | ✅ (email) |
 | Service down | ✅ | ✅ | |
 
----
-
 ## 15. Environments
 
 ```
@@ -751,8 +783,6 @@ Phase 4 (future): Replace with k3d + ArgoCD
 ├── staging namespace
 └── production namespace
 ```
-
----
 
 ## 16. CI/CD & Build Phases
 
@@ -799,8 +829,6 @@ PHASE 4 — Kubernetes (Future)
 └── Deliverable: GitOps deployment pipeline
 ```
 
----
-
 ## 17. Cost Breakdown
 
 ### Monthly Costs
@@ -839,8 +867,6 @@ PHASE 4 — Kubernetes (Future)
 | Sentry Team (if you exceed 5K errors/mo) | $26/mo |
 | Grafana Cloud (if you don't want to self-host) | $0-29/mo |
 | Linear (if you switch from GitHub Issues) | $0-10/mo |
-
----
 
 ## 18. End-to-End Example: Building a Weather API
 
@@ -1015,9 +1041,159 @@ The orchestrator reads `depends_on` and only starts a task when its dependencies
 [Notification] "weather-api v1.0.0 deployed to staging"
 ```
 
----
+## 19. Distributed Architecture (Phase 6)
 
-## 19. Verification Plan
+The current Dark Factory runs locally on a single machine. Phase 6 transforms it into a multi-engineer platform where the factory runs as a centralized service.
+
+### Vision
+
+```
+Engineers write specs → GitHub Issues → Factory Service builds it → PRs ready for review
+```
+
+Engineers stop writing code. They write specs. The factory handles everything else.
+
+### System Architecture
+
+![Distributed Architecture](diagrams/distributed-flow.png)
+
+### Components
+
+#### Factory API (FastAPI)
+The central entry point. Receives GitHub webhooks when issues are created or labeled. Exposes REST endpoints for job management, status, and manual triggers.
+
+- `POST /api/v1/jobs` — submit a job (repo + issue number)
+- `GET /api/v1/jobs` — list all jobs across all engineers
+- `GET /api/v1/jobs/{id}` — job detail with tasks and subtasks
+- `POST /api/v1/webhooks/github` — GitHub webhook receiver
+- Auth: API keys per engineer, GitHub webhook secret
+
+#### Job Scheduler
+Manages the job queue with priority and concurrency control.
+
+- Priority queue (urgent bugs > features > tech debt)
+- Concurrency limit per repo (prevent conflicting PRs)
+- Fair scheduling across engineers (round-robin within priority)
+- Dead letter queue for permanently failed jobs
+- Backed by Redis sorted sets or PostgreSQL `FOR UPDATE SKIP LOCKED`
+
+#### Worker Pool
+Stateless orchestrator instances that pull jobs from the queue. Each worker runs the existing `run_job()` logic but stores state in PostgreSQL instead of local files.
+
+- Horizontally scalable — add workers as load increases
+- Stateless — any worker can resume any job (state in DB)
+- Health-checked — auto-restart on crash
+- Resource-limited — max concurrent agents per worker
+- Runs as Kubernetes pods or Docker Compose services
+
+#### Message Broker (Redis / NATS)
+All events flow through the broker instead of direct HTTP calls.
+
+- Workers publish events (agent_spawned, task_completed, round_result)
+- Dashboard subscribes for real-time updates (WebSocket fan-out)
+- PostgreSQL consumer persists events durably
+- Enables replay — new dashboard instances catch up from DB
+- Decouples workers from dashboard (dashboard down ≠ factory stuck)
+
+#### PostgreSQL
+Replaces SQLite and local state files.
+
+Tables:
+- `jobs` — job metadata, status, owner
+- `tasks` — task + subtask records with status
+- `events` — all lifecycle events (append-only)
+- `state` — working directory paths, branch names, PR numbers
+- `engineers` — API keys, preferences, quotas
+
+#### Object Store (S3 / MinIO)
+Stores artifacts that don't belong in the DB.
+
+- Agent stdout/stderr logs (can be large)
+- Test output (for debugging failed rounds)
+- Working directory snapshots (for crash recovery)
+
+#### Mission Control Dashboard
+Same React UI, but deployed centrally. Shows all jobs across all engineers.
+
+- Real-time updates via WebSocket (subscribed to broker)
+- Filter by engineer, repo, status
+- Global view: how many jobs running, queue depth, agent utilization
+- Per-engineer view: my jobs, my repos, my PRs
+
+### What Changes from Current Architecture
+
+| Component | Current (Local) | Distributed |
+|---|---|---|
+| Entry point | CLI (`dark-factory start`) | API + GitHub webhooks |
+| State storage | `~/.dark-factory/state/*.json` | PostgreSQL `jobs` + `state` tables |
+| Event delivery | HTTP POST to localhost | Message broker (Redis/NATS) |
+| Dashboard DB | SQLite file | PostgreSQL |
+| Agent execution | Local `claude -p` subprocess | Same, but on worker machines |
+| Concurrency | One job at a time | Multiple workers, queue-based |
+| Auth | GitHub PAT in `.env` | Per-engineer API keys + PATs |
+| Working dirs | `/tmp/dark-factory-*` | Persistent volumes or ephemeral with S3 backup |
+
+### Migration Path
+
+The migration is incremental — each step works standalone:
+
+**Step 1: PostgreSQL** — Swap SQLite → Postgres. Update `factory/dashboard/db.py`. Deploy Postgres (Docker Compose or managed). Everything else stays the same.
+
+**Step 2: API Server** — Add webhook receiver and job submission endpoints. The CLI becomes a thin client that calls the API instead of running `run_job()` directly.
+
+**Step 3: Message Broker** — Replace direct HTTP event posting with broker publish. Dashboard subscribes via WebSocket. Add event persistence consumer.
+
+**Step 4: Worker Pool** — Extract orchestrator into a worker process that pulls from the queue. Deploy multiple workers. State moves fully to Postgres.
+
+**Step 5: Multi-tenant** — Add engineer accounts, API keys, quotas, and per-engineer dashboard views. Rate limiting per engineer/repo.
+
+**Step 6: Kubernetes** — Deploy on k8s with autoscaling workers, managed Postgres, and Redis cluster.
+
+### New Repo Structure
+
+```
+dark-factory/
+├── factory/                    # Core (shared by CLI + workers)
+│   ├── orchestrator.py
+│   ├── agents/
+│   ├── guardrails.py
+│   └── prompts/
+├── api/                        # NEW: Factory API server
+│   ├── app.py                  # FastAPI app
+│   ├── routers/
+│   │   ├── jobs.py             # Job CRUD
+│   │   ├── webhooks.py         # GitHub webhook receiver
+│   │   └── engineers.py        # Auth + quotas
+│   ├── scheduler.py            # Job queue management
+│   └── worker.py               # Worker process (pulls from queue)
+├── broker/                     # NEW: Event broker integration
+│   ├── publisher.py            # Replaces EventEmitter HTTP calls
+│   ├── consumer.py             # Persists events to DB
+│   └── websocket.py            # Fan-out to dashboard clients
+├── dashboard/                  # Existing, updated for multi-tenant
+│   ├── api/                    # Dashboard read API
+│   └── frontend/               # React UI
+├── infra/                      # NEW: Deployment configs
+│   ├── docker-compose.yml      # Local multi-service dev
+│   ├── docker-compose.prod.yml
+│   ├── k8s/                    # Kubernetes manifests
+│   └── terraform/              # Cloud infrastructure
+└── cli/                        # Thin CLI client
+    └── main.py                 # Calls Factory API
+```
+
+### Cost Model (Multi-Engineer)
+
+| Engineers | Concurrent Jobs | Workers | Estimated Monthly Cost |
+|---|---|---|---|
+| 1-3 | 1-2 | 1 | ~$50 (Postgres + VM) |
+| 5-10 | 3-5 | 3 | ~$200 |
+| 10-25 | 5-10 | 5 | ~$500 |
+| 25+ | 10+ | 10+ | ~$1000+ |
+
+API token costs (Claude) are separate and scale with job volume, not infra.
+
+## 20. Verification Plan
 
 ### Phase 1 Test
 1. Create a GitHub Issue: "Build a hello world API with GET /health endpoint"

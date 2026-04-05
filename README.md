@@ -187,11 +187,13 @@ Jobs **auto-resume** if they crash. State is saved to `~/.dark-factory/state/`.
 ```
 dark-factory/
 ├── factory/
+│   ├── __init__.py         # Version (single source of truth)
 │   ├── cli.py              # CLI — start, run, retry, repos, create-issue, version
 │   ├── orchestrator.py     # Main loop — task batching, red-green cycle
 │   ├── github_client.py    # GitHub API — issues, PRs, repos
 │   ├── state.py            # Session state persistence for resume
 │   ├── security.py         # Command allowlisting for agents
+│   ├── guardrails.py       # Pre-flight guardrails (tech stack, secrets, deps, scope)
 │   ├── agents/
 │   │   ├── base.py         # Agent runner (async subprocess spawning)
 │   │   ├── planner.py      # Architect agent
@@ -210,6 +212,7 @@ dark-factory/
 ├── dashboard/
 │   └── frontend/           # React + TypeScript + Tailwind dashboard
 ├── DESIGN.md               # Full design document
+├── CHANGELOG.md            # Version history
 └── diagrams/               # Architecture diagrams
 ```
 
@@ -257,12 +260,26 @@ The orchestrator emits events automatically when `DASHBOARD_URL` is set (default
 | **Haiku for simple tasks** | Contracts and regression use haiku (10x faster than sonnet) |
 | **Parallel task batches** | Independent tasks run simultaneously via asyncio.gather |
 
+## Guardrails
+
+Pre-flight and runtime checks that protect production repos (`factory/guardrails.py`):
+
+| Guardrail | What it does |
+|---|---|
+| **Tech stack detection** | Scans for `pyproject.toml`, `package.json`, `go.mod`, etc. Injects detected stack into all agent prompts. Blocks framework migrations. |
+| **Secret scanning** | Pre-flight + post-merge scan for hardcoded API keys, tokens, passwords, private keys, committed `.env` files. Blocks job if secrets found. |
+| **File boundary enforcement** | Feature tasks cannot modify config files, Makefile, Dockerfile, CI workflows. Only infra tasks get relaxed boundaries. |
+| **Dependency guardrails** | Detects competing packages (e.g., requests + httpx). Tells agents what's already installed. Warns on duplicates. |
+| **Regression scope guard** | Blocks regression fixes that touch >5 files or modify infra. Verifies test count doesn't decrease after a job. |
+
+All guardrails run automatically — no configuration needed.
+
 ## Security
 
 Agents run with a security policy written to the target repo's CLAUDE.md:
 - **Allowed**: python, make, git, pytest, ruff, mypy, docker
 - **Blocked**: sudo, ssh, curl, wget, shutdown
-- **Rules**: no arbitrary network requests, no privilege escalation, no system file deletion
+- **Rules**: no arbitrary network requests, no privilege escalation, no system file deletion, no hardcoded secrets, no stack migrations
 
 ## Hard Rules
 
@@ -274,6 +291,30 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 | Max 5 red-green rounds per task | Prevents infinite loops |
 | Agents communicate through files | Artifacts survive context resets |
 | Regression gate before new work | Existing tests must pass first |
+| Never migrate tech stack | Agents must extend, not replace |
+| No hardcoded secrets | Env vars only, scanned pre and post |
+| Developer reads existing code first | Extend, don't duplicate |
+
+## Subtasks
+
+Tasks can optionally contain subtasks for finer-grained parallelism:
+
+```json
+{
+  "id": "task-1",
+  "title": "Backend core",
+  "subtasks": [
+    {"id": "task-1a", "title": "Models", "depends_on": []},
+    {"id": "task-1b", "title": "Config", "depends_on": []},
+    {"id": "task-1c", "title": "DB layer", "depends_on": ["task-1a"]}
+  ]
+}
+```
+
+- Subtasks share a single branch and PR but each gets its own red-green cycle and commit
+- Independent subtasks within a parent are batched by dependency order
+- The Architect decides when to use subtasks vs flat tasks
+- Backward compatible — tasks without subtasks work as before
 
 ## Roadmap
 
@@ -281,6 +322,8 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 - **Phase 2** — CI/CD for dark-factory (GitHub Actions — lint + tests) ✅
 - **Phase 3** — Mission Control dashboard (Status API + React frontend) ✅
 - **Phase 4** — Deployable projects (Docker Compose staging/prod) ✅
-- **Phase 5** — Kubernetes (k3d + ArgoCD)
+- **Phase 5** — Subtasks, guardrails, smart skip, time estimates ✅
+- **Phase 6** — Distributed platform (API service, worker pool, message broker, PostgreSQL, multi-engineer)
+- **Phase 7** — Kubernetes (k3d + ArgoCD + autoscaling workers)
 
 See [DESIGN.md](DESIGN.md) for the full architecture.
