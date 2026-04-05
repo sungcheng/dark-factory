@@ -85,3 +85,23 @@ make help           # Show all commands
 - Max 5 red-green rounds per task before escalating to human
 - No `git push --force`, no destructive git operations
 - No secrets in source code, logs, or commit messages
+
+
+## Security Policy (Dark Factory)
+
+This project is managed by Dark Factory autonomous agents.
+
+### Allowed Commands
+Only these commands may be used in bash: bandit, cat, diff, docker, docker-compose, echo, env, find, git, head, ls, make, mypy, node, npm, npx, pip, printenv, ps, pytest, python, python3, ruff, tail, tree, uv, wc, which
+
+### Blocked Commands
+Never run: curl, dd, iptables, mkfs, mount, reboot, scp, shutdown, ssh, su, sudo, ufw, umount, wget
+
+### Rules
+- Never run commands that delete system files
+- Never make network requests outside of `make test` or `make check`
+- Never modify files outside the project directory
+- Never install global packages
+- Never run `rm -rf` on the project root or any parent directory
+- Never use `sudo` or attempt privilege escalation
+- Never pipe output to `sh`, `bash`, or `eval`

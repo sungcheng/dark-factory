@@ -1,0 +1,137 @@
+[
+  {
+    "id": "task-1",
+    "title": "Scaffold dashboard package and dependencies",
+    "description": "Create the factory/dashboard/ package structure and add all necessary dependencies. Add FastAPI, uvicorn, aiosqlite to pyproject.toml. Create factory/dashboard/__init__.py, factory/dashboard/app.py (FastAPI app with /api/v1 router prefix), factory/dashboard/models.py (empty), factory/dashboard/db.py (empty), factory/dashboard/routers/__init__.py. Add Makefile targets: dashboard (run the dashboard server), dashboard-dev (run with reload). Update .env.example with DASHBOARD_PORT=8420. Create dashboard/frontend/ directory placeholder. Add tests/test_dashboard/ directory with __init__.py.",
+    "acceptance_criteria": [
+      "factory/dashboard/ package exists with __init__.py",
+      "factory/dashboard/app.py creates a FastAPI app with APIRouter prefix /api/v1",
+      "pyproject.toml includes fastapi, uvicorn[standard], aiosqlite as dependencies",
+      "Makefile has 'dashboard' and 'dashboard-dev' targets",
+      ".env.example includes DASHBOARD_PORT=8420",
+      "dashboard/frontend/ directory exists",
+      "tests/test_dashboard/__init__.py exists",
+      "make check passes",
+      "make test passes"
+    ],
+    "depends_on": []
+  },
+  {
+    "id": "task-2",
+    "title": "Implement event models and SQLite storage layer",
+    "description": "Define Pydantic models for dashboard events and implement SQLite persistence. In factory/dashboard/models.py: create EventType enum (job_started, job_completed, job_failed, agent_spawned, agent_exited, task_started, task_completed, task_failed, round_result), Event model (id, timestamp, job_id, event_type, agent_role, task_id, details as dict, repo_name), JobSummary model (job_id, repo_name, issue_number, status, started_at, completed_at, task_count, completed_count, failed_count), JobDetail model (extends JobSummary with events list and tasks list). In factory/dashboard/db.py: implement async SQLite database class with init_db() to create events table, insert_event(), get_jobs() returning JobSummary list, get_job(job_id) returning JobDetail, get_job_log(job_id) returning Event list. Use aiosqlite. Database file location from DASHBOARD_DB_PATH env var, defaulting to ~/.dark-factory/dashboard.db.",
+    "acceptance_criteria": [
+      "EventType enum covers all 9 event types listed",
+      "Event Pydantic model has all required fields with proper types",
+      "JobSummary and JobDetail models exist with correct fields",
+      "init_db() creates the events table in SQLite with correct schema",
+      "insert_event() stores an event and returns it with generated id",
+      "get_jobs() returns list of JobSummary aggregated from events",
+      "get_job() returns JobDetail with full event history",
+      "get_job_log() returns chronological Event list for a job",
+      "All functions are async and use aiosqlite",
+      "Tests cover all CRUD operations using an in-memory SQLite database",
+      "make check passes",
+      "make test passes"
+    ],
+    "depends_on": ["task-1"]
+  },
+  {
+    "id": "task-3",
+    "title": "Implement Status API endpoints",
+    "description": "Build the four REST endpoints in factory/dashboard/routers/events.py. POST /api/v1/events accepts an Event body (without id, which is server-generated), stores it via db layer, returns 201 with the created event. GET /api/v1/jobs returns list of all jobs as JobSummary objects, sorted by most recent first. GET /api/v1/jobs/{job_id} returns a single JobDetail or 404. GET /api/v1/jobs/{job_id}/log returns the event log for a job as a list of Events, or 404 if job doesn't exist. Wire the router into the FastAPI app created in task-1. Add CORS middleware allowing all origins (dashboard will run on a different port). Include lifespan handler that calls init_db() on startup.",
+    "acceptance_criteria": [
+      "POST /api/v1/events returns 201 with created event including server-generated id",
+      "POST /api/v1/events returns 422 for invalid event data",
+      "GET /api/v1/jobs returns list of JobSummary sorted by most recent",
+      "GET /api/v1/jobs returns empty list when no jobs exist",
+      "GET /api/v1/jobs/{job_id} returns JobDetail with events and tasks",
+      "GET /api/v1/jobs/{job_id} returns 404 for unknown job_id",
+      "GET /api/v1/jobs/{job_id}/log returns chronological event list",
+      "GET /api/v1/jobs/{job_id}/log returns 404 for unknown job_id",
+      "CORS middleware is configured",
+      "Database is initialized on app startup via lifespan",
+      "All endpoints have Pydantic response models",
+      "Tests use httpx AsyncClient with the FastAPI app (TestClient)",
+      "make check passes",
+      "make test passes"
+    ],
+    "depends_on": ["task-2"]
+  },
+  {
+    "id": "task-4",
+    "title": "Integrate event emitter into orchestrator",
+    "description": "Create factory/dashboard/emitter.py with an async EventEmitter class that posts events to the Status API. The emitter should be optional — if DASHBOARD_URL env var is not set, all emit calls are silent no-ops (the orchestrator must work without a dashboard). Use httpx.AsyncClient for HTTP calls. Add emit helper methods: emit_job_started, emit_job_completed, emit_job_failed, emit_agent_spawned, emit_agent_exited, emit_task_started, emit_task_completed, emit_task_failed, emit_round_result. Each method constructs the proper Event payload and POSTs to DASHBOARD_URL/api/v1/events. Catch and log (but never raise) any errors — dashboard failures must not break the orchestrator. Then integrate into factory/orchestrator.py: create an emitter instance at the start of run_job(), and call the appropriate emit methods at each lifecycle point (job start/end, agent spawn/exit, task start/complete/fail, round result).",
+    "acceptance_criteria": [
+      "factory/dashboard/emitter.py exists with EventEmitter class",
+      "EventEmitter is a no-op when DASHBOARD_URL is not set",
+      "EventEmitter posts events via httpx to DASHBOARD_URL/api/v1/events",
+      "All 9 event types have dedicated emit methods",
+      "Errors in event posting are logged but never raised",
+      "Orchestrator creates EventEmitter at start of run_job()",
+      "Events emitted at: job started, job completed, job failed",
+      "Events emitted at: task started, task completed, task failed",
+      "Events emitted at: each round result (pass/fail)",
+      "httpx added to pyproject.toml dependencies",
+      "Tests verify emitter sends correct payloads (mock httpx)",
+      "Tests verify emitter is silent no-op without DASHBOARD_URL",
+      "Tests verify emitter swallows exceptions",
+      "make check passes",
+      "make test passes"
+    ],
+    "depends_on": ["task-3"]
+  },
+  {
+    "id": "task-5",
+    "title": "Set up React frontend with Tailwind and dark theme",
+    "description": "Initialize a React + TypeScript + Tailwind CSS project in dashboard/frontend/ using Vite. Configure Tailwind with dark mode as default. Set up a proxy to the FastAPI backend (localhost:8420) for /api/ routes in vite.config.ts. Create the app shell: App.tsx with a dark-themed layout, header with 'Dark Factory — Mission Control' title, and placeholder sections for agent cards, task progress, live log, and job history. Add npm scripts: dev, build, preview. Add a Makefile target 'frontend-dev' to run the Vite dev server and 'frontend-build' to produce a production build. Create a types.ts file with TypeScript interfaces matching the API models (Event, JobSummary, JobDetail). Create an api.ts file with fetch functions for all four API endpoints.",
+    "acceptance_criteria": [
+      "dashboard/frontend/ contains a Vite + React + TypeScript project",
+      "Tailwind CSS is configured with dark mode as default",
+      "vite.config.ts proxies /api/ to localhost:8420",
+      "App.tsx renders a dark-themed layout with header and section placeholders",
+      "types.ts has TypeScript interfaces for Event, EventType, JobSummary, JobDetail",
+      "api.ts has functions: postEvent, getJobs, getJob, getJobLog",
+      "npm run dev starts the dev server",
+      "npm run build produces a production build without errors",
+      "Makefile has 'frontend-dev' and 'frontend-build' targets",
+      "package.json includes react, react-dom, tailwindcss, typescript, vite"
+    ],
+    "depends_on": ["task-3"]
+  },
+  {
+    "id": "task-6",
+    "title": "Build dashboard UI components",
+    "description": "Implement the four main dashboard components in dashboard/frontend/src/components/. AgentCards.tsx: shows cards for Architect, QA Engineer, Developer with status (idle/active/done) derived from latest events, using color-coded borders (gray=idle, blue=active, green=done). TaskProgress.tsx: lists tasks for the selected job with red/green round indicators, shows acceptance criteria completion status. LiveLog.tsx: scrolling event feed that polls GET /api/v1/jobs/{id}/log every 3 seconds, auto-scrolls to bottom, shows timestamp + event type + details with appropriate colors. JobHistory.tsx: table of recent jobs from GET /api/v1/jobs with status badge, duration, repo name, and click to select. Wire all components into App.tsx with state management: selected job ID, auto-refresh via polling. Use Tailwind utility classes throughout, matching a dark industrial theme.",
+    "acceptance_criteria": [
+      "AgentCards component shows Architect, QA, Developer cards with dynamic status",
+      "Agent card borders are color-coded: gray=idle, blue=active, green=done",
+      "TaskProgress component lists tasks with red/green round indicators",
+      "LiveLog component polls every 3 seconds and auto-scrolls",
+      "LiveLog entries show timestamp, event type, and details with color coding",
+      "JobHistory component shows recent jobs in a table with status badges",
+      "Clicking a job in JobHistory selects it and updates other components",
+      "All components use Tailwind CSS with dark theme classes",
+      "App.tsx manages selected job state and passes it to child components",
+      "npm run build succeeds with no TypeScript errors"
+    ],
+    "depends_on": ["task-5"]
+  },
+  {
+    "id": "task-7",
+    "title": "End-to-end integration test",
+    "description": "Write an integration test that verifies the full pipeline: Status API receives events, stores them correctly, and serves them back through all endpoints. Test in tests/test_dashboard/test_integration.py. The test should: (1) start the FastAPI app using httpx AsyncClient, (2) post a sequence of events simulating a real job lifecycle (job_started, agent_spawned for Architect, task_started, round_result fail, round_result pass, task_completed, agent_exited, job_completed), (3) verify GET /api/v1/jobs returns the job with correct summary stats, (4) verify GET /api/v1/jobs/{id} returns full detail with all events, (5) verify GET /api/v1/jobs/{id}/log returns events in chronological order, (6) verify the frontend builds successfully (npm run build). Also verify that the EventEmitter correctly formats and sends events by integration-testing it against the real API (not mocks).",
+    "acceptance_criteria": [
+      "Integration test simulates a full job lifecycle with 8+ events",
+      "GET /api/v1/jobs returns the job with correct task_count, completed_count, status",
+      "GET /api/v1/jobs/{id} returns all events in the detail response",
+      "GET /api/v1/jobs/{id}/log returns events in chronological order",
+      "EventEmitter integration test posts events to real FastAPI app and verifies storage",
+      "Frontend production build succeeds (npm run build exits 0)",
+      "All existing tests still pass (no regressions)",
+      "make check passes",
+      "make test passes"
+    ],
+    "depends_on": ["task-4", "task-6"]
+  }
+]
