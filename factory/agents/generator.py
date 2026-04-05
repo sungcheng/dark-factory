@@ -18,6 +18,7 @@ async def run_generator(
     round_number: int,
     working_dir: str,
     model: str | None = None,
+    human_guidance: str = "",
 ) -> AgentResult:
     """Spawn the Developer agent to make failing tests pass.
 
@@ -46,7 +47,14 @@ async def run_generator(
         f"**Round**: {round_number} of 5\n"
         f"{feedback_note}\n\n"
         f"---\n\n"
-        f"1. Read the failing tests in `tests/`\n"
+        + (
+            f"## Human Guidance\n\n"
+            f"A human reviewed the previous failure and provided this guidance:\n\n"
+            f"{human_guidance}\n\n"
+            f"---\n\n"
+            if human_guidance else ""
+        )
+        + f"1. Read the failing tests in `tests/`\n"
         f"2. Write code in `src/` to make all tests pass\n"
         f"3. Run `make test` to verify\n"
         f"4. Run `make check` to verify lint/types\n"

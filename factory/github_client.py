@@ -22,6 +22,7 @@ class TaskInfo:
     depends_on: list[str]
     issue_number: int | None = None
     status: str = "pending"
+    failure_issue: int | None = None
 
 
 class GitHubClient:
@@ -103,6 +104,74 @@ class GitHubClient:
         repo = self.get_repo(repo_name)
         pr = repo.get_pull(pr_number)
         pr.merge(merge_method="squash")
+
+    def create_draft_pr(
+        self,
+        repo_name: str,
+        branch: str,
+        title: str,
+        body: str = "",
+    ) -> PullRequest:
+        """Open a draft pull request from branch to main."""
+        repo = self.get_repo(repo_name)
+        return repo.create_pull(
+            title=title,
+            body=body,
+            head=branch,
+            base="main",
+            draft=True,
+        )
+
+    def create_failure_issue(
+        self,
+        repo_name: str,
+        parent_issue: int,
+        pr_number: int,
+        task: TaskInfo,
+        feedback: str,
+        round_count: int,
+    ) -> Issue:
+        """Create a needs-human issue for a failed task."""
+        body = (
+            f"## Context\n"
+            f"- **Original issue**: #{parent_issue}\n"
+            f"- **PR**: #{pr_number} (draft)\n"
+            f"- **Task**: {task.id} — {task.title}\n"
+            f"- **Failed after**: {round_count} rounds\n\n"
+            f"## Task Description\n{task.description}\n\n"
+            f"## Acceptance Criteria\n"
+            + "\n".join(f"- {c}" for c in task.acceptance_criteria)
+            + f"\n\n## Last Feedback\n```\n{feedback}\n```\n\n"
+            f"## To Retry\n"
+            f"Comment on this issue with guidance for the Developer. "
+            f"Then run:\n```\n"
+            f"dark-factory retry --repo {repo_name} --issue {parent_issue}\n"
+            f"```\n"
+            f"Your comment will be injected into the Developer's prompt."
+        )
+
+        repo = self.get_repo(repo_name)
+        return repo.create_issue(
+            title=f"[Dark Factory] Task failed: {task.title}",
+            body=body,
+            labels=["dark-factory", "needs-human"],
+        )
+
+    def get_issue_comments(self, repo_name: str, issue_number: int) -> list[str]:
+        """Get all comments on an issue, newest first."""
+        repo = self.get_repo(repo_name)
+        issue = repo.get_issue(issue_number)
+        comments = list(issue.get_comments())
+        return [c.body for c in reversed(comments)]
+
+    def find_needs_human_issues(self, repo_name: str, parent_issue: int) -> list[Issue]:
+        """Find all needs-human issues linked to a parent issue."""
+        repo = self.get_repo(repo_name)
+        issues = repo.get_issues(state="open", labels=["needs-human"])
+        return [
+            i for i in issues
+            if f"#{parent_issue}" in (i.body or "")
+        ]
 
     def create_repo(self, repo_name: str, description: str = "") -> Repository:
         """Create a new private repo under the configured owner."""

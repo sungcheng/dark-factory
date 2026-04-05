@@ -24,6 +24,7 @@ class JobState:
     working_dir: str = ""
     branch: str = ""
     status: str = "in_progress"
+    pr_number: int | None = None
     tasks: list[TaskInfo] = field(default_factory=list)
 
 
@@ -43,6 +44,7 @@ def save_state(state: JobState) -> None:
         "working_dir": state.working_dir,
         "branch": state.branch,
         "status": state.status,
+        "pr_number": state.pr_number,
         "tasks": [asdict(t) for t in state.tasks],
     }
 
@@ -75,6 +77,7 @@ def load_state(repo_name: str, issue_number: int) -> JobState | None:
             depends_on=t.get("depends_on", []),
             issue_number=t.get("issue_number"),
             status=t.get("status", "pending"),
+            failure_issue=t.get("failure_issue"),
         )
         for t in data.get("tasks", [])
     ]
@@ -85,6 +88,7 @@ def load_state(repo_name: str, issue_number: int) -> JobState | None:
         working_dir=data.get("working_dir", ""),
         branch=data.get("branch", ""),
         status=data.get("status", "in_progress"),
+        pr_number=data.get("pr_number"),
         tasks=tasks,
     )
 

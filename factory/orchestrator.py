@@ -39,7 +39,8 @@ async def run_job(
     3. Run regression gate on existing tests
     4. Process tasks in dependency order (parallel where possible)
     5. For each task: QA writes tests -> Developer codes -> QA reviews
-    6. Open PR and merge
+    6. If all pass: open PR and merge
+    7. If any fail: open draft PR + create needs-human issues
     """
     github = GitHubClient()
     ctx = JobContext(repo_name=repo_name, issue_number=issue_number)
@@ -72,7 +73,7 @@ async def run_job(
 
     # Step 3: Regression gate — verify existing tests pass
     LOG.info("Running regression gate...")
-    regression_result = await run_evaluator_regression(
+    await run_evaluator_regression(
         working_dir=ctx.working_dir,
         model=model,
     )
@@ -108,6 +109,8 @@ async def run_job(
         LOG.info("Created %d tasks with GitHub sub-issues", len(ctx.tasks))
 
     # Step 5: Process tasks in dependency order
+    failed_tasks: list[TaskInfo] = []
+
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
         LOG.info("Processing batch: %s", batch_titles)
@@ -117,27 +120,234 @@ async def run_job(
         else:
             await _process_batch_parallel(batch, ctx, github, model, state)
 
-    # Step 6: Commit, push, open PR
-    await _push_changes(ctx)
-    pr = github.create_pr(
-        repo_name=repo_name,
-        branch=ctx.branch,
-        title=f"feat: {issue.title}",
-        body=(
-            f"Closes #{issue_number}\n\n"
-            f"Autonomous implementation by Dark Factory.\n\n"
-            f"## Tasks completed\n"
-            + "\n".join(f"- [x] {t.title}" for t in ctx.tasks)
-        ),
-    )
-    LOG.info("Opened PR #%d", pr.number)
+        # Collect failures from this batch
+        for t in batch:
+            if t.status == "failed":
+                failed_tasks.append(t)
 
-    # Step 7: Auto-merge
-    github.merge_pr(repo_name, pr.number)
-    github.close_issue(repo_name, issue_number)
-    state.status = "completed"
+    # Step 6: Push and open PR
+    await _push_changes(ctx)
+
+    if failed_tasks:
+        # Some tasks failed — open draft PR and create failure issues
+        completed = [t for t in ctx.tasks if t.status == "completed"]
+        pr = github.create_draft_pr(
+            repo_name=repo_name,
+            branch=ctx.branch,
+            title=f"draft: {issue.title}",
+            body=(
+                f"Related: #{issue_number}\n\n"
+                f"Partial implementation by Dark Factory.\n\n"
+                f"## Tasks completed\n"
+                + "\n".join(f"- [x] {t.title}" for t in completed)
+                + "\n\n## Tasks failed (needs human input)\n"
+                + "\n".join(f"- [ ] {t.title}" for t in failed_tasks)
+            ),
+        )
+        LOG.warning("Opened draft PR #%d with %d failed tasks", pr.number, len(failed_tasks))
+
+        # Create a needs-human issue for each failed task
+        for task in failed_tasks:
+            feedback = _read_feedback(ctx.working_dir)
+            failure_issue = github.create_failure_issue(
+                repo_name=repo_name,
+                parent_issue=issue_number,
+                pr_number=pr.number,
+                task=task,
+                feedback=feedback,
+                round_count=MAX_ROUNDS,
+            )
+            task.failure_issue = failure_issue.number
+            LOG.info(
+                "Created needs-human issue #%d for task '%s'",
+                failure_issue.number,
+                task.title,
+            )
+
+        state.pr_number = pr.number
+        save_state(state)
+        LOG.warning(
+            "Job paused. %d task(s) need human input. "
+            "Comment on the needs-human issues and run: "
+            "dark-factory retry --repo %s --issue %d",
+            len(failed_tasks),
+            repo_name,
+            issue_number,
+        )
+    else:
+        # All tasks passed — open PR and auto-merge
+        pr = github.create_pr(
+            repo_name=repo_name,
+            branch=ctx.branch,
+            title=f"feat: {issue.title}",
+            body=(
+                f"Closes #{issue_number}\n\n"
+                f"Autonomous implementation by Dark Factory.\n\n"
+                f"## Tasks completed\n"
+                + "\n".join(f"- [x] {t.title}" for t in ctx.tasks)
+            ),
+        )
+        LOG.info("Opened PR #%d", pr.number)
+
+        github.merge_pr(repo_name, pr.number)
+        github.close_issue(repo_name, issue_number)
+        state.status = "completed"
+        save_state(state)
+        LOG.info("Job complete. PR #%d merged.", pr.number)
+
+
+async def retry_job(
+    repo_name: str,
+    issue_number: int,
+    model: str | None = None,
+) -> None:
+    """Retry failed tasks using human guidance from GitHub issue comments.
+
+    1. Load saved state
+    2. Find needs-human issues with human comments
+    3. Retry each failed task with human guidance injected into prompt
+    4. If all pass: convert draft PR to ready, merge
+    """
+    github = GitHubClient()
+
+    state = load_state(repo_name, issue_number)
+    if not state:
+        raise RuntimeError(f"No saved state for {repo_name}#{issue_number}")
+
+    if not state.working_dir or not Path(state.working_dir).exists():
+        raise RuntimeError(f"Working directory gone: {state.working_dir}")
+
+    ctx = JobContext(
+        repo_name=repo_name,
+        issue_number=issue_number,
+        working_dir=state.working_dir,
+        branch=state.branch,
+        tasks=state.tasks,
+    )
+
+    LOG.info("Retrying failed tasks for %s#%d", repo_name, issue_number)
+
+    # Find failed tasks and their human guidance
+    failed_tasks = [t for t in ctx.tasks if t.status == "failed"]
+    if not failed_tasks:
+        LOG.info("No failed tasks to retry")
+        return
+
+    for task in failed_tasks:
+        # Get human comments from the failure issue
+        human_guidance = ""
+        if task.failure_issue:
+            comments = github.get_issue_comments(repo_name, task.failure_issue)
+            if comments:
+                human_guidance = "\n\n".join(comments)
+                LOG.info("Found human guidance for task '%s'", task.title)
+            else:
+                LOG.warning("No comments on failure issue #%d — retrying without guidance", task.failure_issue)
+
+        # Reset task status and retry
+        task.status = "pending"
+        await _process_task_with_guidance(task, ctx, github, model, state, human_guidance)
+
+    # Check results
+    still_failed = [t for t in ctx.tasks if t.status == "failed"]
+
+    await _push_changes(ctx)
+
+    if still_failed:
+        # Update the failure issues
+        for task in still_failed:
+            feedback = _read_feedback(ctx.working_dir)
+            if task.failure_issue:
+                repo = github.get_repo(repo_name)
+                issue = repo.get_issue(task.failure_issue)
+                issue.create_comment(
+                    f"Retry failed. Still failing after {MAX_ROUNDS} more rounds.\n\n"
+                    f"```\n{feedback}\n```"
+                )
+        save_state(state)
+        LOG.warning("Retry failed. %d task(s) still need human input.", len(still_failed))
+    else:
+        # All tasks passed — convert draft to ready and merge
+        if state.pr_number:
+            repo = github.get_repo(repo_name)
+            pr = repo.get_pull(state.pr_number)
+            # Update PR body and mark ready
+            completed = [t for t in ctx.tasks if t.status == "completed"]
+            pr.edit(
+                title=f"feat: {repo.get_issue(issue_number).title}",
+                body=(
+                    f"Closes #{issue_number}\n\n"
+                    f"Autonomous implementation by Dark Factory.\n\n"
+                    f"## Tasks completed\n"
+                    + "\n".join(f"- [x] {t.title}" for t in completed)
+                ),
+                draft=False,
+            )
+            github.merge_pr(repo_name, state.pr_number)
+
+        # Close failure issues
+        for task in ctx.tasks:
+            if task.failure_issue:
+                github.close_issue(repo_name, task.failure_issue)
+
+        github.close_issue(repo_name, issue_number)
+        state.status = "completed"
+        save_state(state)
+        LOG.info("Retry successful. All tasks complete. PR merged.")
+
+
+async def _process_task_with_guidance(
+    task: TaskInfo,
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    human_guidance: str,
+) -> None:
+    """Retry a failed task with human guidance injected into the Developer prompt."""
+    LOG.info("Retrying task: %s", task.title)
+
+    # Red-Green loop with human guidance
+    for round_num in range(1, MAX_ROUNDS + 1):
+        LOG.info("  Retry round %d/%d", round_num, MAX_ROUNDS)
+        _cleanup_artifacts(ctx.working_dir)
+
+        # Developer writes code with human guidance
+        LOG.info("    Developer coding (with human guidance)...")
+        await run_generator(
+            task_title=task.title,
+            task_description=task.description,
+            acceptance_criteria=task.acceptance_criteria,
+            round_number=round_num,
+            working_dir=ctx.working_dir,
+            model=model,
+            human_guidance=human_guidance,
+        )
+
+        # QA reviews
+        LOG.info("    QA Engineer reviewing...")
+        await run_evaluator_review(
+            task_title=task.title,
+            round_number=round_num,
+            working_dir=ctx.working_dir,
+            model=model,
+        )
+
+        approved_path = Path(ctx.working_dir) / "approved.md"
+        if approved_path.exists():
+            LOG.info("  GREEN — task approved on retry round %d", round_num)
+            task.status = "completed"
+            await _commit_task(ctx, task)
+            if task.issue_number:
+                github.close_issue(ctx.repo_name, task.issue_number)
+            save_state(state)
+            return
+
+        LOG.warning("  RED — retry round %d failed", round_num)
+
+    task.status = "failed"
     save_state(state)
-    LOG.info("Job complete. PR #%d merged.", pr.number)
+    LOG.error("Task '%s' still failing after retry.", task.title)
 
 
 def get_ready_batches(tasks: list[TaskInfo]) -> list[list[TaskInfo]]:
@@ -234,16 +444,13 @@ async def _process_task(
 
         LOG.warning("  RED — round %d failed", round_num)
 
-    # Exhausted all rounds
+    # Exhausted all rounds — mark as failed but don't crash
     task.status = "failed"
     save_state(state)
     LOG.error(
-        "Task '%s' failed after %d rounds. Escalating to human.",
+        "Task '%s' failed after %d rounds. Will escalate to human.",
         task.title,
         MAX_ROUNDS,
-    )
-    raise RuntimeError(
-        f"Task '{task.title}' failed after {MAX_ROUNDS} rounds"
     )
 
 
@@ -255,16 +462,11 @@ async def _process_batch_parallel(
     state: JobState,
 ) -> None:
     """Process a batch of independent tasks in parallel."""
-    tasks = [
+    coros = [
         _process_task(task, ctx, github, model, state)
         for task in batch
     ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            LOG.error("Task '%s' failed: %s", batch[i].title, result)
-            raise result
+    await asyncio.gather(*coros)
 
 
 def _load_tasks(working_dir: str) -> list[TaskInfo]:
@@ -284,6 +486,14 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
         )
         for t in raw
     ]
+
+
+def _read_feedback(working_dir: str) -> str:
+    """Read feedback.md if it exists."""
+    path = Path(working_dir) / "feedback.md"
+    if path.exists():
+        return path.read_text()
+    return "No feedback file found."
 
 
 async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
