@@ -9,7 +9,8 @@ Autonomous AI coding pipeline — you write the spec, AI builds, tests, and depl
 3. **QA Engineer** agent writes failing tests (RED)
 4. **Developer** agent writes code to make tests pass (GREEN)
 5. QA reviews — if tests fail, Developer tries again (max 5 rounds)
-6. PR opened and auto-merged
+6. If all pass: PR opened and auto-merged
+7. If any fail: draft PR opened, needs-human issue created for retry
 
 No agent grades its own work. The Developer cannot touch test files. The QA Engineer cannot touch source files.
 
@@ -48,18 +49,47 @@ GITHUB_OWNER=sungcheng
 
 ## Usage
 
-### Start a job
+### Start a job (single issue)
 
 ```bash
-# The target repo must exist on GitHub with a main branch
 dark-factory start --repo weather-api --issue 1
 ```
 
-This will:
-1. Fetch issue #1 from `sungcheng/weather-api`
-2. Clone the repo to a temp directory
-3. Run the Architect → QA → Developer pipeline
-4. Open a PR and auto-merge when all tasks pass
+### Run all open issues in a repo
+
+```bash
+dark-factory run --repo weather-api
+```
+
+Processes all open issues in order by issue number.
+
+### Retry failed tasks
+
+When a task fails after 5 rounds, the factory creates a `needs-human` issue on GitHub. Comment on it with your guidance, then retry:
+
+```bash
+dark-factory retry --repo weather-api --issue 1
+```
+
+Your comment gets injected into the Developer's prompt for the retry.
+
+### List your repos
+
+```bash
+dark-factory repos
+```
+
+Shows all repos grouped by private/public, with language and open issue count.
+
+### Model selection
+
+Override the model for all agents:
+
+```bash
+dark-factory start --repo weather-api --issue 1 --model opus
+```
+
+Options: `haiku`, `sonnet`, `opus`. Default: `sonnet` for all agents.
 
 ### Verbose mode
 
@@ -67,29 +97,42 @@ This will:
 dark-factory start --repo weather-api --issue 1 -v
 ```
 
-### Check version
+## Failure Recovery
 
-```bash
-dark-factory version
-```
+When a task fails after 5 red-green rounds:
+
+1. Factory **continues** with remaining tasks
+2. Opens a **draft PR** with completed work
+3. Creates a **needs-human issue** for each failed task with:
+   - Link to the original issue and draft PR
+   - Task description and acceptance criteria
+   - Last QA feedback
+4. You **comment** on the issue with guidance ("try X instead", "the endpoint should return 201")
+5. Run `dark-factory retry` — your comment is injected into the Developer's prompt
+6. If retry passes: draft PR converted to ready, merged, issues closed
+
+Jobs also **auto-resume** if they crash. State is saved to `~/.dark-factory/state/`.
 
 ## Project Structure
 
 ```
 dark-factory/
 ├── factory/
-│   ├── cli.py              # dark-factory CLI
+│   ├── cli.py              # CLI — start, run, retry, repos, version
 │   ├── orchestrator.py     # Main loop — task batching, red-green cycle
-│   ├── github_client.py    # GitHub API integration
+│   ├── github_client.py    # GitHub API — issues, PRs, repos
+│   ├── state.py            # Session state persistence for resume
+│   ├── security.py         # Command allowlisting for agents
 │   ├── agents/
-│   │   ├── base.py         # Agent runner (spawns claude subprocesses)
+│   │   ├── base.py         # Agent runner (async subprocess spawning)
 │   │   ├── planner.py      # Architect agent
-│   │   ├── evaluator.py    # QA Engineer agent
+│   │   ├── evaluator.py    # QA Engineer agent (red + regression + review)
 │   │   └── generator.py    # Developer agent
 │   └── prompts/
 │       ├── planner.md      # Architect rules & personality
 │       ├── evaluator.md    # QA Engineer rules & personality
 │       └── generator.md    # Developer rules & personality
+├── tests/                  # Unit tests (41 passing)
 ├── DESIGN.md               # Full design document
 └── diagrams/               # Architecture diagrams
 ```
@@ -104,7 +147,14 @@ Batch 2: [Health endpoint, API client] → run in parallel
 Batch 3: [Weather endpoint]            → depends on batch 2
 ```
 
-Tasks in the same batch run in parallel. A task only starts when all its dependencies are complete.
+Tasks in the same batch run in parallel via `asyncio.gather`. A task only starts when all its dependencies are complete.
+
+## Security
+
+Agents run with a security policy written to the target repo's CLAUDE.md:
+- **Allowed**: python, make, git, pytest, ruff, mypy, docker
+- **Blocked**: sudo, ssh, curl, wget, shutdown
+- **Rules**: no arbitrary network requests, no privilege escalation, no system file deletion
 
 ## Hard Rules
 
@@ -115,6 +165,7 @@ Tasks in the same batch run in parallel. A task only starts when all its depende
 | Each agent gets fresh context | No memory bleed between agents |
 | Max 5 red-green rounds per task | Prevents infinite loops |
 | Agents communicate through files | Artifacts survive context resets |
+| Regression gate before new work | Existing tests must pass first |
 
 ## Roadmap
 

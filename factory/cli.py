@@ -124,12 +124,29 @@ def repos() -> None:
 
     github = GitHubClient()
     user = github._gh.get_user()
+    all_repos = list(user.get_repos())
+
+    # Sort: private first, then alphabetical
+    private_repos = sorted([r for r in all_repos if r.private], key=lambda r: r.name)
+    public_repos = sorted([r for r in all_repos if not r.private], key=lambda r: r.name)
 
     click.echo(f"Repos for {github.owner}:\n")
-    for repo in sorted(user.get_repos(), key=lambda r: r.name):
-        visibility = "private" if repo.private else "public"
-        issues = repo.open_issues_count
-        click.echo(f"  {repo.name:<30} [{visibility}]  {issues} open issue(s)")
+
+    if private_repos:
+        click.echo("  PRIVATE")
+        for repo in private_repos:
+            lang = repo.language or "—"
+            issues = repo.open_issues_count
+            click.echo(f"    {repo.name:<30} {lang:<12} {issues} open issue(s)")
+
+    if public_repos:
+        if private_repos:
+            click.echo()
+        click.echo("  PUBLIC")
+        for repo in public_repos:
+            lang = repo.language or "—"
+            issues = repo.open_issues_count
+            click.echo(f"    {repo.name:<30} {lang:<12} {issues} open issue(s)")
 
 
 @main.command()
