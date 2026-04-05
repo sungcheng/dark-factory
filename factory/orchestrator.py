@@ -83,28 +83,46 @@ async def run_job(
     else:
         LOG.info("🛡️ Skipping regression gate — no existing tests")
 
-    # Step 4: Spawn the Architect (if not resuming with tasks)
+    # Step 4: Spawn the Architect or fast-track simple issues
     if not ctx.tasks:
-        LOG.info("🏗️ Spawning Architect...")
-        planner_result = await run_planner(
-            issue_title=issue.title,
-            issue_body=issue.body or "",
-            repo_name=repo_name,
-            working_dir=ctx.working_dir,
-            model=model,
-        )
+        if _is_simple_issue(issue.title, issue.body or ""):
+            # Simple issue — skip Architect, create a single task directly
+            LOG.info("⚡ Simple issue detected — skipping Architect")
+            ctx.tasks = [
+                TaskInfo(
+                    id="task-1",
+                    title=issue.title,
+                    description=issue.body or issue.title,
+                    acceptance_criteria=[
+                        line.lstrip("- ").lstrip("* ").strip()
+                        for line in (issue.body or "").split("\n")
+                        if line.strip().startswith(("- ", "* "))
+                    ] or [issue.title],
+                    depends_on=[],
+                ),
+            ]
+            ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
+        else:
+            LOG.info("🏗️ Spawning Architect...")
+            planner_result = await run_planner(
+                issue_title=issue.title,
+                issue_body=issue.body or "",
+                repo_name=repo_name,
+                working_dir=ctx.working_dir,
+                model=model,
+            )
 
-        tasks_path = Path(ctx.working_dir) / "tasks.json"
-        if not planner_result.success and not tasks_path.exists():
-            LOG.error("Architect failed (stderr): %s", planner_result.stderr)
-            LOG.error("Architect failed (stdout): %s", planner_result.stdout[:500])
-            raise RuntimeError("Architect agent failed")
-        if not planner_result.success:
-            LOG.warning("Architect exited with error but tasks.json exists — continuing")
+            tasks_path = Path(ctx.working_dir) / "tasks.json"
+            if not planner_result.success and not tasks_path.exists():
+                LOG.error("Architect failed (stderr): %s", planner_result.stderr)
+                LOG.error("Architect failed (stdout): %s", planner_result.stdout[:500])
+                raise RuntimeError("Architect agent failed")
+            if not planner_result.success:
+                LOG.warning("Architect exited with error but tasks.json exists — continuing")
 
-        # Load tasks and create sub-issues
-        ctx.tasks = _load_tasks(ctx.working_dir)
-        ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
+            ctx.tasks = _load_tasks(ctx.working_dir)
+            ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
+
         state.tasks = ctx.tasks
         save_state(state)
         LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
@@ -515,6 +533,24 @@ def _read_feedback(working_dir: str) -> str:
     return "No feedback file found."
 
 
+def _is_simple_issue(title: str, body: str) -> bool:
+    """Detect if an issue is simple enough to skip the Architect.
+
+    Simple issues: bug fixes, single endpoints, config changes,
+    small features that don't need task decomposition.
+    """
+    simple_keywords = ["fix", "bug", "typo", "rename", "update", "add endpoint", "remove", "bump"]
+    text = f"{title} {body}".lower()
+
+    # Short body = simple issue
+    if len(body) < 200:
+        for keyword in simple_keywords:
+            if keyword in text:
+                return True
+
+    return False
+
+
 async def _has_tests(working_dir: str) -> bool:
     """Check if the repo has existing test files."""
     tests_dir = Path(working_dir) / "tests"
@@ -524,9 +560,30 @@ async def _has_tests(working_dir: str) -> bool:
     return len(test_files) > 0
 
 
-async def _run_tests_with_check(working_dir: str) -> tuple[bool, str]:
-    """Run make test + make check directly. Returns (passed, output)."""
-    # Run tests
+async def _run_tests_with_check(
+    working_dir: str,
+    test_file: str | None = None,
+) -> tuple[bool, str]:
+    """Run tests + lint directly. Returns (passed, output).
+
+    If test_file is provided, only run that file first for speed.
+    If it passes, run the full suite to catch regressions.
+    """
+    # Run targeted tests first (fast)
+    if test_file:
+        test_path = Path(working_dir) / test_file
+        if test_path.exists():
+            proc = await asyncio.create_subprocess_exec(
+                "uv", "run", "pytest", test_file, "-v", "--tb=short",
+                cwd=working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+            if proc.returncode != 0:
+                return False, stdout.decode()[-2000:]
+
+    # Run full test suite
     test_proc = await asyncio.create_subprocess_exec(
         "make", "test",
         cwd=working_dir,

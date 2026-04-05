@@ -20,6 +20,16 @@ DEFAULT_MODELS: dict[str, str] = {
     "Developer": "opus",
 }
 
+# Timeout per role in seconds
+DEFAULT_TIMEOUTS: dict[str, int] = {
+    "Architect": 1200,            # 20 min
+    "Developer": 1800,            # 30 min — heaviest work
+    "QA Engineer (RED)": 1200,    # 20 min
+    "QA Engineer (Review)": 600,  # 10 min
+    "QA Engineer (Contracts)": 300,  # 5 min
+    "QA Engineer (Regression)": 300, # 5 min
+}
+
 
 @dataclass
 class AgentResult:
@@ -78,12 +88,14 @@ async def run_agent(config: AgentConfig) -> AgentResult:
             stdout=asyncio.subprocess.PIPE,
             stderr=None,  # Let stderr stream to terminal for visibility
         )
+        timeout = DEFAULT_TIMEOUTS.get(config.role, 1200)
         stdout_bytes, _ = await asyncio.wait_for(
             proc.communicate(),
-            timeout=1200,  # 20 minute timeout per agent
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
-        LOG.error("%s agent timed out after 1200s — killing process", config.role)
+        timeout = DEFAULT_TIMEOUTS.get(config.role, 1200)
+        LOG.error("%s agent timed out after %ds — killing process", config.role, timeout)
         proc.kill()
         await proc.wait()
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
