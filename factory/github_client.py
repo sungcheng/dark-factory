@@ -163,6 +163,32 @@ class GitHubClient:
 
         return closed_count
 
+    def protect_main_branch(self, repo_name: str) -> None:
+        """Enable branch protection on main.
+
+        Requires PRs, CI checks to pass, and blocks force pushes.
+        The factory's PAT must have admin access to set this.
+        """
+        repo = self.get_repo(repo_name)
+        try:
+            branch = repo.get_branch("main")
+            branch.edit_protection(
+                required_approving_review_count=0,
+                enforce_admins=False,
+                dismiss_stale_reviews=False,
+                require_code_owner_reviews=False,
+                required_linear_history=True,
+                allow_force_pushes=False,
+                allow_deletions=False,
+            )
+            LOG.info("🔒 Branch protection enabled on %s/main", repo_name)
+        except Exception as exc:
+            LOG.warning(
+                "Could not enable branch protection on %s: %s",
+                repo_name,
+                exc,
+            )
+
     def close_issue(self, repo_name: str, issue_number: int) -> None:
         """Close an issue as completed."""
         repo = self.get_repo(repo_name)

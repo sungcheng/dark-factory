@@ -441,6 +441,7 @@ In a dark factory, AI agents have write access to repos, can create infrastructu
 | **HTTPS** | All external endpoints served over TLS |
 | **Authentication** | API keys for service-to-service, JWT for user-facing endpoints |
 | **GitHub permissions** | Fine-grained PAT — only repos the factory needs, no admin access |
+| **Branch protection** | Main branch protected by default — requires PRs, blocks force pushes, enforces linear history |
 | **Audit trail** | Every agent action logged to PostgreSQL event store with timestamps |
 
 ### Security Checklist (enforced by QA Engineer)

@@ -211,6 +211,9 @@ def create_project(
             LOG.error("Push failed: %s", result.stderr)
             raise RuntimeError(f"Failed to push: {result.stderr}")
 
+    # Step 8: Enable branch protection on main
+    github.protect_main_branch(name)
+
     LOG.info("Project %s ready at %s", name, repo_url)
     return repo_url
 

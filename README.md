@@ -61,7 +61,7 @@ dark-factory create-project infra -t terraform             # with Terraform temp
 dark-factory create-project weather-api -d "Weather API"   # with description
 ```
 
-Creates a GitHub repo with CLAUDE.md, CI/CD workflow, and README. Without `--template`, the Architect scaffolds the project based on the first issue. Available templates: `fastapi`, `fullstack`, `terraform`.
+Creates a GitHub repo with CLAUDE.md, CI/CD workflow, README, and **main branch protection** (requires PRs, blocks force pushes, enforces linear history). Without `--template`, the Architect scaffolds the project based on the first issue. Available templates: `fastapi`, `fullstack`, `terraform`.
 
 ### Create an issue
 
