@@ -38,6 +38,9 @@ async def run_job(
     model: str | None = None,
 ) -> None:
     """Main orchestrator loop."""
+    # Start dashboard if not running
+    await _ensure_dashboard_running()
+
     # Health check — verify claude CLI works before doing anything
     await _check_claude_cli()
 
@@ -981,6 +984,66 @@ def _cleanup_file(working_dir: str, filename: str) -> None:
     path = Path(working_dir) / filename
     if path.exists():
         path.unlink()
+
+
+async def _ensure_dashboard_running() -> None:
+    """Start the dashboard server if it's not already running.
+
+    Checks if port 8420 (or DASHBOARD_PORT) is responding.
+    If not, starts uvicorn in the background. The dashboard
+    stays running after the factory finishes.
+    """
+    import os
+    import socket
+
+    port = int(os.environ.get("DASHBOARD_PORT", "8420"))
+    dashboard_url = os.environ.get("DASHBOARD_URL", "")
+
+    # If DASHBOARD_URL is not set, configure it
+    if not dashboard_url:
+        os.environ["DASHBOARD_URL"] = f"http://localhost:{port}"
+
+    # Check if already running
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.settimeout(1)
+        result = sock.connect_ex(("localhost", port))
+        if result == 0:
+            LOG.info(
+                "📊 Dashboard already running on port %d",
+                port,
+            )
+            return
+    finally:
+        sock.close()
+
+    # Start dashboard in background
+    LOG.info("📊 Starting dashboard on port %d...", port)
+    proc = await asyncio.create_subprocess_exec(
+        "uv",
+        "run",
+        "uvicorn",
+        "factory.dashboard.app:app",
+        "--port",
+        str(port),
+        "--log-level",
+        "warning",
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+        start_new_session=True,  # Survives parent exit
+    )
+    # Give it a moment to start
+    await asyncio.sleep(1)
+    if proc.returncode is not None:
+        LOG.warning(
+            "⚠️ Dashboard failed to start (exit %d) — continuing without it",
+            proc.returncode,
+        )
+    else:
+        LOG.info(
+            "📊 Dashboard running at http://localhost:%d/docs",
+            port,
+        )
 
 
 async def _check_claude_cli() -> None:

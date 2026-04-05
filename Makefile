@@ -47,6 +47,9 @@ dashboard:			## Run the dashboard server
 dashboard-dev:			## Run the dashboard server with reload
 	uv run uvicorn factory.dashboard.app:app --reload --port $$(python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.getenv('DASHBOARD_PORT', '8420'))")
 
+dashboard-stop:			## Stop the background dashboard server
+	@pkill -f "uvicorn factory.dashboard" 2>/dev/null && echo "Dashboard stopped" || echo "Dashboard not running"
+
 # ─── Housekeeping ────────────────────────────────────────
 clean:				## Remove build artifacts
 	rm -rf .venv __pycache__ .pytest_cache .mypy_cache dist *.egg-info
