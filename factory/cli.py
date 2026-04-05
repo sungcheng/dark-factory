@@ -227,8 +227,8 @@ def create_issue(
     "--template",
     "-t",
     type=click.Choice(["fastapi"]),
-    default="fastapi",
-    help="Project template (default: fastapi)",
+    default=None,
+    help="Apply a project template (optional)",
 )
 @click.option(
     "--public",
@@ -248,12 +248,17 @@ def create_project(
     public: bool,
     description: str,
 ) -> None:
-    """Create a new project repo with scaffold, CI/CD, and Dockerfile.
+    """Create a new project repo with CI/CD, ready for the factory.
+
+    By default creates a bare repo with CLAUDE.md and CI workflow.
+    The Architect will scaffold the project based on the first issue.
+    Use --template to start with a pre-built scaffold.
 
     Examples:
         dark-factory create-project weather-api
         dark-factory create-project weather-api --public
-        dark-factory create-project weather-api -t fastapi -d "Weather forecast API"
+        dark-factory create-project weather-api -t fastapi
+        dark-factory create-project weather-api -d "Weather API"
     """
     from factory.project import create_project as _create
 
