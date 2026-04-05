@@ -42,6 +42,9 @@ async def run_job(
     6. If all pass: open PR and merge
     7. If any fail: open draft PR + create needs-human issues
     """
+    # Health check — verify claude CLI works before doing anything
+    await _check_claude_cli()
+
     github = GitHubClient()
     ctx = JobContext(repo_name=repo_name, issue_number=issue_number)
 
@@ -98,7 +101,8 @@ async def run_job(
         )
 
         if not planner_result.success:
-            LOG.error("Architect failed: %s", planner_result.stderr)
+            LOG.error("Architect failed (stderr): %s", planner_result.stderr)
+            LOG.error("Architect failed (stdout): %s", planner_result.stdout[:500])
             raise RuntimeError("Architect agent failed")
 
         # Load tasks and create sub-issues
@@ -568,3 +572,29 @@ def _cleanup_file(working_dir: str, filename: str) -> None:
     path = Path(working_dir) / filename
     if path.exists():
         path.unlink()
+
+
+async def _check_claude_cli() -> None:
+    """Verify claude CLI is installed and working before starting a job."""
+    LOG.info("Running health check...")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "-p", "Reply with OK", "--output-format", "json",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except FileNotFoundError:
+        raise RuntimeError(
+            "claude CLI not found. Install it: https://docs.anthropic.com/en/docs/claude-code"
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError("claude CLI health check timed out after 30s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"claude CLI returned exit code {proc.returncode}. "
+            f"Make sure you're authenticated (run 'claude' to log in)."
+        )
+
+    LOG.info("Health check passed — claude CLI is working")

@@ -87,7 +87,9 @@ async def run_agent(config: AgentConfig) -> AgentResult:
             timeout=1200,  # 20 minute timeout per agent
         )
     except asyncio.TimeoutError:
-        LOG.error("%s agent timed out after 1200s", config.role)
+        LOG.error("%s agent timed out after 1200s — killing process", config.role)
+        proc.kill()
+        await proc.wait()
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
 
     exit_code = proc.returncode or 1
