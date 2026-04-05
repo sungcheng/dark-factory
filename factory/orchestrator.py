@@ -66,14 +66,11 @@ async def run_job(
     issue = github.fetch_issue(repo_name, issue_number)
     LOG.info("📋 Fetched issue: %s", issue.title)
 
-    # Step 2: Clone the repo and create a feature branch (if not resuming)
+    # Step 2: Clone the repo (if not resuming)
     if not ctx.working_dir:
         ctx.working_dir = await _clone_repo(github, ctx)
-        ctx.branch = f"factory/issue-{issue_number}"
-        await _create_branch(ctx)
         write_security_policy(ctx.working_dir)
         state.working_dir = ctx.working_dir
-        state.branch = ctx.branch
         save_state(state)
 
     # Step 3: Regression gate — verify existing tests pass
@@ -117,85 +114,95 @@ async def run_job(
         save_state(state)
         LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
 
-    # Step 5: Process tasks in dependency order, push + PR incrementally
-    pr_number: int | None = state.pr_number
-
+    # Step 5: Process tasks — each task gets its own branch, PR, merge
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
         LOG.info("📦 Processing batch: %s", batch_titles)
 
-        if len(batch) == 1:
-            await _process_task(batch[0], ctx, github, model, state)
-        else:
-            await _process_batch_parallel(batch, ctx, github, model, state)
+        for task in batch:
+            # Create a branch from latest main
+            task_branch = f"factory/issue-{issue_number}/{task.id}"
+            await _checkout_main(ctx)
+            await _pull_latest(ctx)
+            await _create_branch_from(ctx, task_branch)
 
-        # Push after each batch and open/update PR
-        completed = [t for t in ctx.tasks if t.status == "completed"]
-        failed = [t for t in ctx.tasks if t.status == "failed"]
-        pending = [t for t in ctx.tasks if t.status == "pending"]
+            # Run the red-green cycle
+            await _process_task(task, ctx, github, model, state)
 
-        if completed:
-            await _push_changes(ctx)
-
-            if pr_number is None:
-                # Open PR on first completed task
+            if task.status == "completed":
+                # Push, open PR, merge
+                await _push_branch(ctx, task_branch)
                 pr = github.create_pr(
                     repo_name=repo_name,
-                    branch=ctx.branch,
-                    title=f"feat: {issue.title}",
-                    body=_build_pr_body(issue_number, completed, failed, pending),
+                    branch=task_branch,
+                    title=f"feat: {task.title}",
+                    body=(
+                        f"Part of #{issue_number}\n\n"
+                        f"Task: {task.id}\n\n"
+                        f"## What this does\n{task.description}"
+                    ),
                 )
-                pr_number = pr.number
-                state.pr_number = pr_number
+                LOG.info("🚀 Opened PR #%d for %s", pr.number, task.title)
+
+                github.merge_pr(repo_name, pr.number)
+                LOG.info("✅ Merged PR #%d", pr.number)
+
+                if task.issue_number:
+                    github.close_issue(repo_name, task.issue_number)
+
                 save_state(state)
-                LOG.info("🚀 Opened PR #%d", pr_number)
-            else:
-                # Update existing PR body with progress
-                repo = github.get_repo(repo_name)
-                pr = repo.get_pull(pr_number)
-                pr.edit(body=_build_pr_body(issue_number, completed, failed, pending))
-                LOG.info("📝 Updated PR #%d (%d/%d tasks done)", pr_number, len(completed), len(ctx.tasks))
+
+            elif task.status == "failed":
+                # Push partial work, create needs-human issue
+                await _push_branch(ctx, task_branch)
+                pr = github.create_draft_pr(
+                    repo_name=repo_name,
+                    branch=task_branch,
+                    title=f"draft: {task.title}",
+                    body=(
+                        f"Part of #{issue_number}\n\n"
+                        f"Task: {task.id} — **failed after {MAX_ROUNDS} rounds**\n\n"
+                        f"## What this does\n{task.description}"
+                    ),
+                )
+                feedback = _read_feedback(ctx.working_dir)
+                failure_issue = github.create_failure_issue(
+                    repo_name=repo_name,
+                    parent_issue=issue_number,
+                    pr_number=pr.number,
+                    task=task,
+                    feedback=feedback,
+                    round_count=MAX_ROUNDS,
+                )
+                task.failure_issue = failure_issue.number
+                LOG.warning(
+                    "⚠️ Task '%s' failed — draft PR #%d, needs-human issue #%d",
+                    task.title,
+                    pr.number,
+                    failure_issue.number,
+                )
+                save_state(state)
 
     # Step 6: Finalize
     completed = [t for t in ctx.tasks if t.status == "completed"]
     failed = [t for t in ctx.tasks if t.status == "failed"]
 
     if failed:
-        # Create needs-human issues for failed tasks
-        for task in failed:
-            feedback = _read_feedback(ctx.working_dir)
-            failure_issue = github.create_failure_issue(
-                repo_name=repo_name,
-                parent_issue=issue_number,
-                pr_number=pr_number or 0,
-                task=task,
-                feedback=feedback,
-                round_count=MAX_ROUNDS,
-            )
-            task.failure_issue = failure_issue.number
-            LOG.info(
-                "⚠️ Created needs-human issue #%d for task '%s'",
-                failure_issue.number,
-                task.title,
-            )
-
-        save_state(state)
         LOG.warning(
-            "⏸️ Job paused. %d task(s) need human input. "
+            "⏸️ Job paused. %d/%d tasks completed, %d failed. "
             "Comment on the needs-human issues and run: "
             "dark-factory retry --repo %s --issue %d",
+            len(completed),
+            len(ctx.tasks),
             len(failed),
             repo_name,
             issue_number,
         )
     else:
-        # All tasks passed — merge and close
-        if pr_number:
-            github.merge_pr(repo_name, pr_number)
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
-        LOG.info("✅ Job complete. PR #%d merged.", pr_number)
+        LOG.info("✅ All %d tasks complete. Issue #%d closed.", len(completed), issue_number)
 
 
 async def retry_job(
@@ -564,10 +571,43 @@ async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
     return work_dir
 
 
-async def _create_branch(ctx: JobContext) -> None:
-    """Create and checkout a feature branch."""
+async def _checkout_main(ctx: JobContext) -> None:
+    """Switch back to main branch."""
     proc = await asyncio.create_subprocess_exec(
-        "git", "checkout", "-b", ctx.branch,
+        "git", "checkout", "main",
+        cwd=ctx.working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+
+async def _pull_latest(ctx: JobContext) -> None:
+    """Pull latest changes from origin main."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "pull", "origin", "main",
+        cwd=ctx.working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+
+async def _create_branch_from(ctx: JobContext, branch_name: str) -> None:
+    """Create and checkout a new branch from current HEAD."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "checkout", "-b", branch_name,
+        cwd=ctx.working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+
+async def _push_branch(ctx: JobContext, branch_name: str) -> None:
+    """Push a specific branch to origin."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "push", "-u", "origin", branch_name,
         cwd=ctx.working_dir,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

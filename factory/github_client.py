@@ -62,7 +62,7 @@ class GitHubClient:
             issue = repo.create_issue(
                 title=task.title,
                 body=body,
-                labels=["dark-factory", "auto-generated"],
+                labels=["dark-factory", "auto-generated", f"issue-{parent_issue}"],
             )
             task.issue_number = issue.number
         return tasks
