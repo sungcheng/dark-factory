@@ -23,6 +23,12 @@ interface JobDetailResponse {
   tasks: Task[];
 }
 
+/** Task with its parent issue info attached. */
+export interface TaskWithParent extends Task {
+  parentIssue: number;
+  parentStatus: string;
+}
+
 /** Aggregate view: one entry per repo with all issues rolled up. */
 interface RepoGroup {
   repo_name: string;
@@ -73,7 +79,7 @@ const STATUS_DOT: Record<string, string> = {
 export function App(): React.ReactElement {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
-  const [allTasks, setAllTasks] = useState<Task[]>([]);
+  const [allTasks, setAllTasks] = useState<TaskWithParent[]>([]);
   const [allEvents, setAllEvents] = useState<Event[]>([]);
 
   // Fetch job list and auto-select repo with in-progress work
@@ -111,7 +117,7 @@ export function App(): React.ReactElement {
     const repoJobs = jobs.filter((j) => j.repo_name === selectedRepo);
     if (repoJobs.length === 0) return;
 
-    const taskResults: Task[] = [];
+    const taskResults: TaskWithParent[] = [];
     const eventResults: Event[] = [];
 
     await Promise.all(
@@ -124,7 +130,12 @@ export function App(): React.ReactElement {
           ]);
           if (detailRes.ok) {
             const detail: JobDetailResponse = await detailRes.json();
-            taskResults.push(...detail.tasks);
+            const tagged = detail.tasks.map((t) => ({
+              ...t,
+              parentIssue: detail.issue_number,
+              parentStatus: j.status,
+            }));
+            taskResults.push(...tagged);
           }
           if (logRes.ok) {
             const log = await logRes.json();
