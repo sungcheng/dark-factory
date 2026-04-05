@@ -93,6 +93,7 @@ async def run_agent(config: AgentConfig) -> AgentResult:
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
 
     exit_code = proc.returncode or 1
+    stdout_str = stdout_bytes.decode()
 
     LOG.info(
         "%s agent exited with code %d",
@@ -100,9 +101,26 @@ async def run_agent(config: AgentConfig) -> AgentResult:
         exit_code,
     )
 
+    if exit_code != 0:
+        # Parse JSON output to find the failure reason
+        try:
+            data = json.loads(stdout_str)
+            reason = data.get("terminal_reason", "unknown")
+            denials = data.get("permission_denials", [])
+            result_text = data.get("result", "")[:200]
+            LOG.warning(
+                "%s agent failed — reason: %s, denials: %s, result: %s",
+                config.role,
+                reason,
+                denials,
+                result_text,
+            )
+        except (json.JSONDecodeError, TypeError):
+            LOG.warning("%s agent failed — raw output: %s", config.role, stdout_str[:300])
+
     return AgentResult(
         exit_code=exit_code,
-        stdout=stdout_bytes.decode(),
+        stdout=stdout_str,
         stderr="",
     )
 
