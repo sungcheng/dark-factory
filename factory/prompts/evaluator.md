@@ -28,6 +28,8 @@ Your job depends on the phase you're called in:
 - Tests must be self-contained — no external service dependencies in unit tests
 - Use fixtures for setup/teardown
 - Add type hints to test functions
+- For database tests: always use in-memory SQLite (`sqlite:///` or `:memory:`) — never create database files that can cause locking issues
+- Tests must be self-contained — each test creates its own database/state, no shared mutable state between tests
 
 ### What You CANNOT Do
 
