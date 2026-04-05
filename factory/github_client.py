@@ -1,0 +1,126 @@
+"""GitHub API client — issues, repos, PRs."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from dataclasses import field
+
+from github import Github
+from github.Issue import Issue
+from github.PullRequest import PullRequest
+from github.Repository import Repository
+
+
+@dataclass
+class TaskInfo:
+    """A task parsed from tasks.json with its GitHub issue number."""
+
+    id: str
+    title: str
+    description: str
+    acceptance_criteria: list[str]
+    depends_on: list[str]
+    issue_number: int | None = None
+    status: str = "pending"
+
+
+class GitHubClient:
+    """Wraps PyGithub for dark-factory operations."""
+
+    def __init__(self, token: str | None = None, owner: str | None = None) -> None:
+        self.token = token or os.environ["GITHUB_TOKEN"]
+        self.owner = owner or os.environ["GITHUB_OWNER"]
+        self._gh = Github(self.token)
+
+    def get_repo(self, repo_name: str) -> Repository:
+        """Get a repo by name under the configured owner."""
+        return self._gh.get_repo(f"{self.owner}/{repo_name}")
+
+    def fetch_issue(self, repo_name: str, issue_number: int) -> Issue:
+        """Fetch a single issue."""
+        repo = self.get_repo(repo_name)
+        return repo.get_issue(issue_number)
+
+    def create_sub_issues(
+        self,
+        repo_name: str,
+        parent_issue: int,
+        tasks: list[TaskInfo],
+    ) -> list[TaskInfo]:
+        """Create GitHub issues for each task, linking to the parent."""
+        repo = self.get_repo(repo_name)
+        for task in tasks:
+            body = (
+                f"Parent: #{parent_issue}\n\n"
+                f"## Description\n{task.description}\n\n"
+                f"## Acceptance Criteria\n"
+            )
+            for criterion in task.acceptance_criteria:
+                body += f"- [ ] {criterion}\n"
+
+            issue = repo.create_issue(
+                title=task.title,
+                body=body,
+                labels=["dark-factory", "auto-generated"],
+            )
+            task.issue_number = issue.number
+        return tasks
+
+    def close_issue(self, repo_name: str, issue_number: int) -> None:
+        """Close an issue as completed."""
+        repo = self.get_repo(repo_name)
+        issue = repo.get_issue(issue_number)
+        issue.edit(state="closed", state_reason="completed")
+
+    def create_branch(self, repo_name: str, branch_name: str) -> str:
+        """Create a branch from main. Returns branch name."""
+        repo = self.get_repo(repo_name)
+        main = repo.get_branch("main")
+        repo.create_git_ref(
+            ref=f"refs/heads/{branch_name}",
+            sha=main.commit.sha,
+        )
+        return branch_name
+
+    def create_pr(
+        self,
+        repo_name: str,
+        branch: str,
+        title: str,
+        body: str = "",
+    ) -> PullRequest:
+        """Open a pull request from branch to main."""
+        repo = self.get_repo(repo_name)
+        return repo.create_pull(
+            title=title,
+            body=body,
+            head=branch,
+            base="main",
+        )
+
+    def merge_pr(self, repo_name: str, pr_number: int) -> None:
+        """Merge a pull request."""
+        repo = self.get_repo(repo_name)
+        pr = repo.get_pull(pr_number)
+        pr.merge(merge_method="squash")
+
+    def create_repo(self, repo_name: str, description: str = "") -> Repository:
+        """Create a new private repo under the configured owner."""
+        user = self._gh.get_user()
+        return user.create_repo(
+            name=repo_name,
+            description=description,
+            private=True,
+            auto_init=True,
+        )
+
+
+@dataclass
+class JobContext:
+    """All state for a single factory job."""
+
+    repo_name: str
+    issue_number: int
+    branch: str = ""
+    tasks: list[TaskInfo] = field(default_factory=list)
+    working_dir: str = ""
