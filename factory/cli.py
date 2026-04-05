@@ -149,6 +149,34 @@ def repos() -> None:
             click.echo(f"    {repo.name:<30} {lang:<12} {issues} open issue(s)")
 
 
+@main.command(name="create-issue")
+@click.option("--repo", "-r", required=True, help="Target repo name")
+@click.option("--title", "-t", required=True, help="Issue title")
+@click.option("--body", "-b", default="", help="Issue body (or use --editor)")
+@click.option("--editor", "-e", is_flag=True, help="Open editor to write issue body")
+@click.option("--label", "-l", multiple=True, help="Labels to add (repeatable)")
+def create_issue(repo: str, title: str, body: str, editor: bool, label: tuple[str, ...]) -> None:
+    """Create a GitHub issue on a repo.
+
+    Examples:
+        dark-factory create-issue --repo weather-api --title "Add caching"
+        dark-factory create-issue --repo weather-api --title "Add caching" --editor
+        dark-factory create-issue --repo weather-api --title "Add caching" -b "Cache responses for 5 min"
+        dark-factory create-issue --repo weather-api --title "Add caching" -l enhancement -l priority
+    """
+    from factory.github_client import GitHubClient
+
+    if editor:
+        body = click.edit(text="") or ""
+
+    github = GitHubClient()
+    repo_obj = github.get_repo(repo)
+    labels = list(label) if label else []
+    issue = repo_obj.create_issue(title=title, body=body, labels=labels)
+    click.echo(f"Created issue #{issue.number}: {issue.title}")
+    click.echo(f"  https://github.com/{github.owner}/{repo}/issues/{issue.number}")
+
+
 @main.command()
 def version() -> None:
     """Show the Dark Factory version."""

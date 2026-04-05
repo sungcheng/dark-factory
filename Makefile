@@ -31,6 +31,9 @@ run:				## Run factory on all open issues (usage: make run repo=weather-api)
 start:				## Start a single job (usage: make start repo=weather-api issue=1)
 	uv run dark-factory start --repo $(repo) --issue $(issue)
 
+create-issue:			## Create issue (usage: make create-issue repo=weather-api title="Add caching")
+	uv run dark-factory create-issue --repo $(repo) --title "$(title)" --editor
+
 retry:				## Retry failed tasks (usage: make retry repo=weather-api issue=1)
 	uv run dark-factory retry --repo $(repo) --issue $(issue)
 
