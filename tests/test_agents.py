@@ -44,16 +44,22 @@ class TestDefaultModels:
     """Tests for default model assignments."""
 
     def test_architect_model(self) -> None:
-        """Architect uses sonnet by default."""
-        assert DEFAULT_MODELS["Architect"] == "sonnet"
+        """Architect uses opus by default."""
+        assert DEFAULT_MODELS["Architect"] == "opus"
 
     def test_developer_model(self) -> None:
-        """Developer uses sonnet by default."""
-        assert DEFAULT_MODELS["Developer"] == "sonnet"
+        """Developer uses opus by default."""
+        assert DEFAULT_MODELS["Developer"] == "opus"
+
+    def test_qa_model(self) -> None:
+        """QA agents use sonnet by default."""
+        assert DEFAULT_MODELS["QA Engineer (RED)"] == "sonnet"
+        assert DEFAULT_MODELS["QA Engineer (Review)"] == "sonnet"
+        assert DEFAULT_MODELS["QA Engineer (Regression)"] == "sonnet"
 
     def test_all_roles_have_defaults(self) -> None:
         """All agent roles have default models."""
-        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "Developer"}
+        expected_roles = {"Architect", "QA Engineer (RED)", "QA Engineer (Review)", "QA Engineer (Regression)", "Developer"}
         assert set(DEFAULT_MODELS.keys()) == expected_roles
 
 

@@ -12,10 +12,11 @@ LOG = logging.getLogger(__name__)
 
 # Default model assignments per role (cheap for coordination, powerful for coding)
 DEFAULT_MODELS: dict[str, str] = {
-    "Architect": "sonnet",
+    "Architect": "opus",
     "QA Engineer (RED)": "sonnet",
     "QA Engineer (Review)": "sonnet",
-    "Developer": "sonnet",
+    "QA Engineer (Regression)": "sonnet",
+    "Developer": "opus",
 }
 
 
@@ -75,21 +76,18 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     )
 
     try:
-        proc = await asyncio.wait_for(
-            asyncio.create_subprocess_exec(
-                *cmd,
-                cwd=config.working_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            ),
-            timeout=10,
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=config.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=None,  # Let stderr stream to terminal for visibility
         )
-        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+        stdout_bytes, _ = await asyncio.wait_for(
             proc.communicate(),
-            timeout=600,  # 10 minute timeout per agent
+            timeout=1200,  # 20 minute timeout per agent
         )
     except asyncio.TimeoutError:
-        LOG.error("%s agent timed out after 600s", config.role)
+        LOG.error("%s agent timed out after 1200s", config.role)
         return AgentResult(exit_code=1, stdout="", stderr="Agent timed out")
 
     exit_code = proc.returncode or 1
@@ -103,7 +101,7 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     return AgentResult(
         exit_code=exit_code,
         stdout=stdout_bytes.decode(),
-        stderr=stderr_bytes.decode(),
+        stderr="",
     )
 
 
