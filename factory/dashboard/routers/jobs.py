@@ -200,5 +200,10 @@ async def get_job(job_id: str) -> JobDetail:
 async def get_job_log(job_id: str) -> list[EventOut]:
     """Get chronological event log for a job."""
     data = _load_job_data(job_id)
-    task_ids = [t["id"] for t in data.get("tasks", [])]
+    # Collect all IDs: job_id itself, task IDs, and subtask IDs
+    task_ids = [job_id]
+    for t in data.get("tasks", []):
+        task_ids.append(t["id"])
+        for s in t.get("subtasks", []):
+            task_ids.append(s["id"])
     return await fetch_events_for_job(task_ids)
