@@ -115,21 +115,24 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     LOG.info("  %s agent exited (code=%d)", config.role, exit_code)
 
     if exit_code != 0:
-        # Parse JSON output to find the failure reason
+        # Parse JSON output to understand the exit
         try:
             data = json.loads(stdout_str)
             reason = data.get("terminal_reason", "unknown")
             denials = data.get("permission_denials", [])
             result_text = data.get("result", "")[:200]
-            LOG.warning(
-                "%s agent failed — reason: %s, denials: %s, result: %s",
-                config.role,
-                reason,
-                denials,
-                result_text,
-            )
+            if reason == "completed" and not denials:
+                LOG.info("  %s completed (exit code 1 is a CLI quirk): %s", config.role, result_text)
+            else:
+                LOG.warning(
+                    "  ⚠️ %s — reason: %s, denials: %d, result: %s",
+                    config.role,
+                    reason,
+                    len(denials),
+                    result_text,
+                )
         except (json.JSONDecodeError, TypeError):
-            LOG.warning("%s agent failed — raw output: %s", config.role, stdout_str[:300])
+            LOG.warning("  ⚠️ %s — raw output: %s", config.role, stdout_str[:300])
 
     return AgentResult(
         exit_code=exit_code,
