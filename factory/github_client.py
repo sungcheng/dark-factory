@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from dataclasses import field
@@ -10,6 +11,8 @@ from github import Github
 from github.Issue import Issue
 from github.PullRequest import PullRequest
 from github.Repository import Repository
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,9 +81,36 @@ class GitHubClient:
         parent_issue: int,
         tasks: list[TaskInfo],
     ) -> list[TaskInfo]:
-        """Create GitHub issues for each task, linking to the parent."""
+        """Create GitHub issues for each task, reusing existing ones.
+
+        Checks for open sub-issues with the same label (issue-{parent})
+        and matches by title. Only creates new issues for tasks that
+        don't already have one. This prevents duplicate sub-issues
+        when re-running the factory.
+        """
         repo = self.get_repo(repo_name)
+        label = f"issue-{parent_issue}"
+
+        # Find existing open sub-issues for this parent
+        existing: dict[str, int] = {}
+        for issue in repo.get_issues(
+            state="open",
+            labels=["auto-generated", label],
+        ):
+            existing[issue.title.strip().lower()] = issue.number
+
         for task in tasks:
+            # Check if a matching issue already exists
+            match_key = task.title.strip().lower()
+            if match_key in existing:
+                task.issue_number = existing[match_key]
+                LOG.debug(
+                    "Reusing existing issue #%d for '%s'",
+                    task.issue_number,
+                    task.title,
+                )
+                continue
+
             body = (
                 f"Parent: #{parent_issue}\n\n"
                 f"## Description\n{task.description}\n\n"
@@ -92,10 +122,46 @@ class GitHubClient:
             issue = repo.create_issue(
                 title=task.title,
                 body=body,
-                labels=["dark-factory", "auto-generated", f"issue-{parent_issue}"],
+                labels=["dark-factory", "auto-generated", label],
             )
             task.issue_number = issue.number
         return tasks
+
+    def close_stale_sub_issues(
+        self,
+        repo_name: str,
+        parent_issue: int,
+        active_titles: list[str],
+    ) -> int:
+        """Close sub-issues that no longer match the current task plan.
+
+        When the Architect generates a new task plan, old sub-issues
+        from previous runs that aren't in the new plan get closed.
+
+        Returns the number of issues closed.
+        """
+        repo = self.get_repo(repo_name)
+        label = f"issue-{parent_issue}"
+        active = {t.strip().lower() for t in active_titles}
+        closed_count = 0
+
+        for issue in repo.get_issues(
+            state="open",
+            labels=["auto-generated", label],
+        ):
+            if issue.title.strip().lower() not in active:
+                issue.edit(
+                    state="closed",
+                    state_reason="not_planned",
+                )
+                LOG.info(
+                    "Closed stale sub-issue #%d: %s",
+                    issue.number,
+                    issue.title,
+                )
+                closed_count += 1
+
+        return closed_count
 
     def close_issue(self, repo_name: str, issue_number: int) -> None:
         """Close an issue as completed."""

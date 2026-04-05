@@ -150,6 +150,21 @@ async def run_job(
                 )
 
             ctx.tasks = _load_tasks(ctx.working_dir)
+
+            # Close stale sub-issues from previous runs
+            active_titles = [t.title for t in ctx.tasks]
+            stale_count = github.close_stale_sub_issues(
+                repo_name,
+                issue_number,
+                active_titles,
+            )
+            if stale_count:
+                LOG.info(
+                    "🧹 Closed %d stale sub-issue(s) from previous runs",
+                    stale_count,
+                )
+
+            # Create or reuse sub-issues (deduplicates by title)
             ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
 
         state.tasks = ctx.tasks
@@ -159,10 +174,9 @@ async def run_job(
         # Persist task info to dashboard DB
         import json as _json
 
-        tasks_data = _json.dumps([
-            {"id": t.id, "title": t.title, "status": t.status}
-            for t in ctx.tasks
-        ])
+        tasks_data = _json.dumps(
+            [{"id": t.id, "title": t.title, "status": t.status} for t in ctx.tasks]
+        )
         await emitter.update_job_tasks(
             repo=repo_name,
             issue_number=issue_number,
@@ -192,7 +206,10 @@ async def run_job(
             await _pull_latest(ctx)
 
             if await _is_task_already_done(
-                task, ctx, issue_number, github,
+                task,
+                ctx,
+                issue_number,
+                github,
             ):
                 LOG.info(
                     "⏭️ Skipping '%s' — already complete",
@@ -211,11 +228,21 @@ async def run_job(
             # Run the red-green cycle (subtasks or single task)
             if task.has_subtasks:
                 await _process_task_with_subtasks(
-                    task, ctx, github, model, state, emitter,
+                    task,
+                    ctx,
+                    github,
+                    model,
+                    state,
+                    emitter,
                 )
             else:
                 await _process_task(
-                    task, ctx, github, model, state, emitter,
+                    task,
+                    ctx,
+                    github,
+                    model,
+                    state,
+                    emitter,
                 )
 
             if task.status == "completed":
@@ -298,7 +325,8 @@ async def run_job(
 
         # Regression scope guard: verify test count didn't decrease
         test_ok, test_msg = await verify_test_count_not_decreased(
-            ctx.working_dir, pre_job_test_count,
+            ctx.working_dir,
+            pre_job_test_count,
         )
         if not test_ok:
             LOG.error("🚫 %s", test_msg)
@@ -310,8 +338,7 @@ async def run_job(
         real_secrets = [s for s in final_secrets if s.pattern_name != ".env file"]
         if real_secrets:
             LOG.warning(
-                "⚠️ Post-merge secret scan found %d issue(s). "
-                "Review before deploying.",
+                "⚠️ Post-merge secret scan found %d issue(s). Review before deploying.",
                 len(real_secrets),
             )
 
@@ -523,17 +550,11 @@ def get_ready_subtask_batches(
             remaining.remove(s)
 
     while remaining:
-        batch = [
-            s
-            for s in remaining
-            if all(d in completed for d in s.depends_on)
-        ]
+        batch = [s for s in remaining if all(d in completed for d in s.depends_on)]
 
         if not batch:
             pending_ids = [s.id for s in remaining]
-            raise RuntimeError(
-                f"Subtask deadlock: {pending_ids}"
-            )
+            raise RuntimeError(f"Subtask deadlock: {pending_ids}")
 
         yield batch
 
@@ -572,7 +593,12 @@ async def _process_task_with_subtasks(
             )
 
             await _process_task(
-                pseudo_task, ctx, github, model, state, emitter,
+                pseudo_task,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
 
             # Mirror status back
@@ -648,9 +674,7 @@ async def _process_task(
     # was canceled after merging), skip the Developer entirely.
     pre_passed, _ = await _run_tests_with_check(ctx.working_dir)
     if pre_passed:
-        LOG.info(
-            "  ⏭️ Tests already pass — feature exists, skipping Developer"
-        )
+        LOG.info("  ⏭️ Tests already pass — feature exists, skipping Developer")
         if emitter:
             await emitter.emit_round_result(task.id, 0, passed=True)
             await emitter.emit_task_completed(task.id)
@@ -764,9 +788,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
     """Load tasks.json written by the Architect."""
     tasks_path = Path(working_dir) / "tasks.json"
     if not tasks_path.exists():
-        raise FileNotFoundError(
-            f"Architect didn't create tasks.json in {working_dir}"
-        )
+        raise FileNotFoundError(f"Architect didn't create tasks.json in {working_dir}")
 
     raw = json.loads(tasks_path.read_text())
     all_ids: set[str] = set()
@@ -782,18 +804,14 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
         for s in t.get("subtasks", []):
             sub_id = s["id"]
             if sub_id in all_ids:
-                raise ValueError(
-                    f"Duplicate subtask ID: {sub_id}"
-                )
+                raise ValueError(f"Duplicate subtask ID: {sub_id}")
             all_ids.add(sub_id)
             subtasks.append(
                 SubTaskInfo(
                     id=sub_id,
                     title=s["title"],
                     description=s.get("description", ""),
-                    acceptance_criteria=s.get(
-                        "acceptance_criteria", []
-                    ),
+                    acceptance_criteria=s.get("acceptance_criteria", []),
                     depends_on=s.get("depends_on", []),
                 )
             )
@@ -803,9 +821,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
                 id=task_id,
                 title=t["title"],
                 description=t.get("description", ""),
-                acceptance_criteria=t.get(
-                    "acceptance_criteria", []
-                ),
+                acceptance_criteria=t.get("acceptance_criteria", []),
                 depends_on=t.get("depends_on", []),
                 subtasks=subtasks,
             )
@@ -986,7 +1002,8 @@ async def _regression_gate_with_healing(
             # Regression scope guard: check what the fix touched
             changed = await _get_changed_files(ctx.working_dir)
             scope_ok, scope_reason = await check_regression_scope(
-                ctx.working_dir, changed,
+                ctx.working_dir,
+                changed,
             )
             if not scope_ok:
                 LOG.error("🚫 Regression scope guard: %s", scope_reason)

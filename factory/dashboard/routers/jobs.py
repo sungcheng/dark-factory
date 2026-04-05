@@ -104,15 +104,9 @@ async def list_jobs() -> list[JobSummary]:
         tasks = j.get("tasks", [])
         task_count = len(tasks)
         completed_count = sum(
-            1
-            for t in tasks
-            if t.get("status") in ("success", "completed")
+            1 for t in tasks if t.get("status") in ("success", "completed")
         )
-        failed_count = sum(
-            1
-            for t in tasks
-            if t.get("status") == "failed"
-        )
+        failed_count = sum(1 for t in tasks if t.get("status") == "failed")
         # Derive status if state file is stale
         status = j.get("status", "in_progress")
         if status == "in_progress" and task_count > 0:
@@ -173,9 +167,7 @@ async def get_job(job_id: str) -> JobDetail:
                     title=s["title"],
                     description=s.get("description", ""),
                     status=s.get("status", "pending"),
-                    acceptance_criteria=s.get(
-                        "acceptance_criteria", []
-                    ),
+                    acceptance_criteria=s.get("acceptance_criteria", []),
                     depends_on=s.get("depends_on", []),
                     failure_issue=s.get("failure_issue"),
                 )
