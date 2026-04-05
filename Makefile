@@ -1,4 +1,4 @@
-.PHONY: develop test test-cov check format clean repos run help
+.PHONY: develop test test-cov check format clean repos run help dashboard dashboard-dev
 
 # ─── Setup ───────────────────────────────────────────────
 develop:			## Install all dependencies
@@ -36,6 +36,13 @@ create-issue:			## Create issue (usage: make create-issue repo=weather-api title
 
 retry:				## Retry failed tasks (usage: make retry repo=weather-api issue=1)
 	uv run dark-factory retry --repo $(repo) --issue $(issue)
+
+# ─── Dashboard ───────────────────────────────────────────
+dashboard:			## Run the dashboard server
+	uv run uvicorn factory.dashboard.app:app --port $$(python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.getenv('DASHBOARD_PORT', '8420'))")
+
+dashboard-dev:			## Run the dashboard server with reload
+	uv run uvicorn factory.dashboard.app:app --reload --port $$(python -c "import os; from dotenv import load_dotenv; load_dotenv(); print(os.getenv('DASHBOARD_PORT', '8420'))")
 
 # ─── Housekeeping ────────────────────────────────────────
 clean:				## Remove build artifacts
