@@ -3,19 +3,15 @@
 All tests pass. Code review complete.
 
 ## Summary
-- Tests: 139/139 passing
-- Lint (ruff): clean — developer also fixed 18 pre-existing ruff errors
-- Mypy: 10 pre-existing errors in unchanged/whitespace-only files (base.py, github_client.py, orchestrator.py, templates/) — not introduced by this task; confirmed against main branch
-- Security: no hardcoded secrets found
-- Frontend scaffold: complete
+- Tests: 174/174 passing
+- Coverage: 100% on dashboard code (factory/dashboard/)
+- Lint: clean (ruff)
+- Types: clean for all dashboard files (mypy reports 10 pre-existing errors in factory/templates/, factory/agents/base.py, factory/github_client.py, factory/orchestrator.py — none introduced by this task)
+- Security: no hardcoded secrets, parameterized SQL queries, Pydantic input validation at boundary
 
-## Frontend Scaffold Verified
-- `dashboard/frontend/` structure matches contracts.md
-- Vite + React + TypeScript configured (`vite.config.ts`, `tsconfig.json`)
-- Tailwind CSS with dark mode enabled (`tailwind.config.ts`, `postcss.config.cjs`)
-- All required components present: `App.tsx`, `Header.tsx`, `AgentCards.tsx`, `TaskProgress.tsx`, `LiveLog.tsx`, `JobHistory.tsx`
-- TypeScript types defined in `src/types/index.ts`
-- API client stub at `src/api/client.ts`
-- Frontend `Makefile` with `install`, `dev`, `build`, `clean` targets
-- `/api` proxy configured in `vite.config.ts` pointing to `http://localhost:8000`
-- `contracts.md` documents directory structure and component responsibilities
+## Implementation Notes
+- `POST /api/v1/events` returns 201 with full `EventOut` body (id, timestamp, all input fields)
+- SQL uses `?` placeholders throughout — no injection risk
+- `init_db()` called at both startup (lifespan) and inside `insert_event` for resilience
+- CORS middleware configured with `allow_origins=["*"]` as required
+- 100% coverage on all new modules: app.py, db.py, models.py, routers/events.py
