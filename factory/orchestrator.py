@@ -66,11 +66,13 @@ async def run_job(
     else:
         state = JobState(repo_name=repo_name, issue_number=issue_number)
 
+    job_tag = f"{repo_name}#{issue_number}"
     LOG.info("🏭 Starting job for %s#%d", repo_name, issue_number)
 
     # Step 1: Fetch the issue
     issue = github.fetch_issue(repo_name, issue_number)
     LOG.info("📋 Fetched issue: %s", issue.title)
+    await emitter.emit_log(job_tag, f"📋 Fetched issue: {issue.title}")
 
     # Step 2: Clone the repo (if not resuming)
     if not ctx.working_dir:
@@ -96,6 +98,7 @@ async def run_job(
 
     tech_stack = preflight.tech_stack
     LOG.info("🔍 Tech stack: %s", tech_stack.summary())
+    await emitter.emit_log(job_tag, f"🔍 Tech stack: {tech_stack.summary()}")
 
     # Count tests before any changes (for regression scope guard)
     pre_job_test_count = await count_tests(ctx.working_dir)
@@ -104,15 +107,21 @@ async def run_job(
     has_existing_tests = await _has_tests(ctx.working_dir)
     if has_existing_tests:
         LOG.info("🛡️ Running regression gate...")
+        await emitter.emit_log(job_tag, "🛡️ Running regression gate...")
         await _regression_gate_with_healing(ctx, model)
+        await emitter.emit_log(job_tag, "🛡️ Regression gate passed", "success")
     else:
         LOG.info("🛡️ Skipping regression gate — no existing tests")
+        await emitter.emit_log(
+            job_tag, "🛡️ Skipping regression gate — no existing tests"
+        )
 
     # Step 4: Spawn the Architect or fast-track simple issues
     if not ctx.tasks:
         if _is_simple_issue(issue.title, issue.body or ""):
             # Simple issue — skip Architect, create a single task directly
             LOG.info("⚡ Simple issue detected — skipping Architect")
+            await emitter.emit_log(job_tag, "⚡ Simple issue — skipping Architect")
             ctx.tasks = [
                 TaskInfo(
                     id="task-1",
@@ -130,6 +139,7 @@ async def run_job(
             ctx.tasks = github.create_sub_issues(repo_name, issue_number, ctx.tasks)
         else:
             LOG.info("🏗️ Spawning Architect...")
+            await emitter.emit_log(job_tag, "🏗️ Spawning Architect...")
             planner_result = await run_planner(
                 issue_title=issue.title,
                 issue_body=issue.body or "",
@@ -170,6 +180,10 @@ async def run_job(
         state.tasks = ctx.tasks
         save_state(state)
         LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
+        await emitter.emit_log(
+            job_tag,
+            f"📝 Created {len(ctx.tasks)} tasks with GitHub sub-issues",
+        )
 
         # Persist task info to dashboard DB
         import json as _json
@@ -199,6 +213,9 @@ async def run_job(
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
         LOG.info("📦 Processing batch: %s", batch_titles)
+        await emitter.emit_log(
+            job_tag, f"📦 Processing batch: {', '.join(batch_titles)}"
+        )
 
         for task in batch:
             # Smart skip: check if task is already done
@@ -214,6 +231,9 @@ async def run_job(
                 LOG.info(
                     "⏭️ Skipping '%s' — already complete",
                     task.title,
+                )
+                await emitter.emit_log(
+                    task.id, f"⏭️ Skipping '{task.title}' — already complete"
                 )
                 task.status = "completed"
                 if task.issue_number:
@@ -260,9 +280,16 @@ async def run_job(
                     ),
                 )
                 LOG.info("🚀 Opened PR #%d for %s", pr.number, task.title)
+                await emitter.emit_log(
+                    task.id,
+                    f"🚀 Opened PR #{pr.number} for {task.title}",
+                )
 
                 github.merge_pr(repo_name, pr.number)
                 LOG.info("✅ Merged PR #%d", pr.number)
+                await emitter.emit_log(
+                    task.id, f"✅ Merged PR #{pr.number}", "success"
+                )
 
                 if task.issue_number:
                     github.close_issue(repo_name, task.issue_number)
@@ -292,6 +319,12 @@ async def run_job(
                     round_count=MAX_ROUNDS,
                 )
                 task.failure_issue = failure_issue.number
+                await emitter.emit_log(
+                    task.id,
+                    f"⚠️ Task '{task.title}' failed — draft PR #{pr.number}, "
+                    f"needs-human #{failure_issue.number}",
+                    "failure",
+                )
                 LOG.warning(
                     "⚠️ Task '%s' failed — draft PR #%d, needs-human issue #%d",
                     task.title,
@@ -319,6 +352,7 @@ async def run_job(
     else:
         # Post-merge validation — pull final main, run full check
         LOG.info("🔍 Running post-merge validation...")
+        await emitter.emit_log(job_tag, "🔍 Running post-merge validation...")
         await _checkout_main(ctx)
         await _pull_latest(ctx)
         await _install_frontend_deps(ctx.working_dir)
@@ -351,6 +385,12 @@ async def run_job(
             github.close_issue(repo_name, issue_number)
             state.status = "completed"
             save_state(state)
+            await emitter.emit_log(
+                job_tag,
+                f"✅ All {len(completed)} tasks complete. "
+                f"Issue #{issue_number} closed.",
+                "success",
+            )
             LOG.info(
                 "✅ All %d tasks complete. Post-merge validation "
                 "passed. Issue #%d closed.",
@@ -361,6 +401,11 @@ async def run_job(
             await emitter.emit_job_failed(repo_name, issue_number)
             state.status = "failed"
             save_state(state)
+            await emitter.emit_log(
+                job_tag,
+                f"⚠️ Post-merge validation failed. Issue #{issue_number} left open.",
+                "failure",
+            )
             LOG.warning(
                 "⚠️ All tasks merged but post-merge validation "
                 "failed. Issue #%d left open for manual review.",
@@ -639,6 +684,7 @@ async def _process_task(
     # Phase 0: QA writes interface contracts (haiku — fast, simple task)
     LOG.info("  📄 QA writing contracts...")
     if emitter:
+        await emitter.emit_log(task.id, "📄 QA writing interface contracts (haiku)")
         await emitter.emit_agent_spawned(task.id, "QA Engineer (Contracts)")
     await run_evaluator_contracts(
         task_title=task.title,
@@ -651,6 +697,10 @@ async def _process_task(
     # Phase 1: QA writes tests AND Developer scaffolds (parallel)
     LOG.info("  ⚡ QA writing tests + Developer scaffolding (parallel)...")
     if emitter:
+        await emitter.emit_log(
+            task.id,
+            "⚡ QA tests + Developer scaffold (parallel)",
+        )
         await emitter.emit_agent_spawned(task.id, "QA Engineer (RED)")
         await emitter.emit_agent_spawned(task.id, "Developer (scaffold)")
     await asyncio.gather(
@@ -676,6 +726,11 @@ async def _process_task(
     if pre_passed:
         LOG.info("  ⏭️ Tests already pass — feature exists, skipping Developer")
         if emitter:
+            await emitter.emit_log(
+                task.id,
+                "⏭️ Tests already pass — skipping Developer",
+                "success",
+            )
             await emitter.emit_round_result(task.id, 0, passed=True)
             await emitter.emit_task_completed(task.id)
         task.status = "completed"
@@ -693,6 +748,10 @@ async def _process_task(
         # Developer writes code
         LOG.info("    💻 Developer coding...")
         if emitter:
+            await emitter.emit_log(
+                task.id,
+                f"🔄 Round {round_num}/{MAX_ROUNDS} — Developer coding...",
+            )
             await emitter.emit_agent_spawned(task.id, "Developer")
         await run_generator(
             task_title=task.title,
@@ -710,6 +769,12 @@ async def _process_task(
             # Tests pass — quick approve, no need to spawn QA agent
             LOG.info("  ✅ GREEN — all tests pass on round %d", round_num)
             if emitter:
+                await emitter.emit_log(
+                    task.id,
+                    f"✅ GREEN — all tests pass on round {round_num}",
+                    "success",
+                )
+            if emitter:
                 await emitter.emit_round_result(task.id, round_num, passed=True)
                 await emitter.emit_task_completed(task.id)
                 await emitter.emit_agent_exited(task.id, "Developer", success=True)
@@ -723,6 +788,10 @@ async def _process_task(
         # Tests failed — spawn QA only to write detailed feedback
         LOG.info("    🔍 Tests failed — spawning QA for feedback...")
         if emitter:
+            await emitter.emit_log(
+                task.id,
+                f"🔍 Tests failed round {round_num} — QA writing feedback...",
+            )
             await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
         await run_evaluator_review(
             task_title=task.title,
@@ -756,6 +825,11 @@ async def _process_task(
             )
 
         if emitter:
+            await emitter.emit_log(
+                task.id,
+                f"🔴 RED — round {round_num} failed",
+                "failure",
+            )
             await emitter.emit_round_result(task.id, round_num, passed=False)
             await emitter.emit_agent_exited(task.id, "QA Engineer", success=False)
         LOG.warning("  🔴 RED — round %d failed", round_num)

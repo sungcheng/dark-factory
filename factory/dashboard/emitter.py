@@ -197,3 +197,15 @@ class EventEmitter:
             message=f"round {round_num}",
         )
         await self._post_event(event)
+
+    async def emit_log(
+        self, task_id: str, message: str, status: str = "pending"
+    ) -> None:
+        """Emit a narrative log line for the LiveLog panel."""
+        event = EventIn(
+            task_id=task_id,
+            event_type="log",
+            status=status,
+            message=message,
+        )
+        await self._post_event(event)

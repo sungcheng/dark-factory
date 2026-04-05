@@ -16,6 +16,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   agent_exited: "text-gray-400",
   job_completed: "text-green-500",
   job_failed: "text-red-500",
+  log: "text-cyan-400",
 };
 
 function formatTime(isoString: string): string {
@@ -38,7 +39,7 @@ export function LiveLog({ jobId, events }: LiveLogProps): React.ReactElement {
 
   if (!jobId) {
     return (
-      <div data-testid="log-container" className="h-64 overflow-y-auto bg-gray-950 rounded-lg p-3 text-gray-500">
+      <div data-testid="log-container" className="h-[32rem] overflow-y-auto bg-gray-950 rounded-lg p-3 text-gray-500">
         Select a job to see logs
       </div>
     );
@@ -46,7 +47,7 @@ export function LiveLog({ jobId, events }: LiveLogProps): React.ReactElement {
 
   if (events.length === 0) {
     return (
-      <div data-testid="log-container" className="h-64 overflow-y-auto bg-gray-950 rounded-lg p-3 text-gray-500">
+      <div data-testid="log-container" className="h-[32rem] overflow-y-auto bg-gray-950 rounded-lg p-3 text-gray-500">
         No events yet
       </div>
     );
@@ -56,7 +57,7 @@ export function LiveLog({ jobId, events }: LiveLogProps): React.ReactElement {
     <div
       ref={containerRef}
       data-testid="log-container"
-      className="h-64 overflow-y-auto bg-gray-950 rounded-lg p-3 font-mono text-sm"
+      className="h-[32rem] overflow-y-auto bg-gray-950 rounded-lg p-3 font-mono text-sm"
     >
       {events.map((entry) => {
         const colorClass = EVENT_TYPE_COLORS[entry.event_type] ?? "text-gray-300";
