@@ -1,4 +1,5 @@
 """CLI for Dark Factory — dark-factory command."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,8 @@ def main(verbose: bool) -> None:
 @click.option("--repo", "-r", required=True, help="Target repo name")
 @click.option("--issue", "-i", required=True, type=int, help="GitHub issue number")
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     type=click.Choice(["haiku", "sonnet", "opus"]),
     default=None,
     help="Override model for all agents",
@@ -53,7 +55,8 @@ def start(repo: str, issue: int, model: str | None) -> None:
 @click.option("--repo", "-r", required=True, help="Target repo name")
 @click.option("--issue", "-i", required=True, type=int, help="Original issue number")
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     type=click.Choice(["haiku", "sonnet", "opus"]),
     default=None,
     help="Override model for all agents",
@@ -81,13 +84,16 @@ def retry(repo: str, issue: int, model: str | None) -> None:
 @main.command()
 @click.option("--repo", "-r", required=True, help="Target repo name")
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     type=click.Choice(["haiku", "sonnet", "opus"]),
     default=None,
     help="Override model for all agents",
 )
 @click.option(
-    "--parallel", "-p", is_flag=True,
+    "--parallel",
+    "-p",
+    is_flag=True,
     help="Process issues in parallel (use when issues are independent)",
 )
 def run(repo: str, model: str | None, parallel: bool) -> None:
@@ -117,10 +123,13 @@ def run(repo: str, model: str | None, parallel: bool) -> None:
         click.echo(f"  #{issue.number}: {issue.title}")
 
     if parallel:
+
         async def run_all() -> None:
             results = await asyncio.gather(
-                *[run_job(repo_name=repo, issue_number=i.number, model=model)
-                  for i in open_issues],
+                *[
+                    run_job(repo_name=repo, issue_number=i.number, model=model)
+                    for i in open_issues
+                ],
                 return_exceptions=True,
             )
             for issue, result in zip(open_issues, results):

@@ -1,13 +1,12 @@
 """Tests for dashboard/frontend/ React + Vite + TypeScript + Tailwind scaffold."""
+
 from __future__ import annotations
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
-
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 FRONTEND_ROOT = PROJECT_ROOT / "dashboard" / "frontend"
@@ -136,16 +135,12 @@ class TestTailwindConfig:
     def test_tailwind_dark_mode_configured(self) -> None:
         """tailwind.config.ts must configure darkMode."""
         content = (FRONTEND_ROOT / "tailwind.config.ts").read_text()
-        assert "darkMode" in content, (
-            "tailwind.config.ts must define darkMode setting"
-        )
+        assert "darkMode" in content, "tailwind.config.ts must define darkMode setting"
 
     def test_tailwind_content_paths_include_src(self) -> None:
         """tailwind.config.ts content paths must cover src/**/*.{ts,tsx}."""
         content = (FRONTEND_ROOT / "tailwind.config.ts").read_text()
-        assert "src" in content, (
-            "tailwind.config.ts content paths must include src/"
-        )
+        assert "src" in content, "tailwind.config.ts content paths must include src/"
 
     def test_postcss_config_exists(self) -> None:
         """dashboard/frontend/postcss.config.cjs must exist."""
@@ -156,9 +151,7 @@ class TestTailwindConfig:
     def test_postcss_includes_tailwindcss(self) -> None:
         """postcss.config.cjs must include tailwindcss plugin."""
         content = (FRONTEND_ROOT / "postcss.config.cjs").read_text()
-        assert "tailwindcss" in content, (
-            "postcss.config.cjs must reference tailwindcss"
-        )
+        assert "tailwindcss" in content, "postcss.config.cjs must reference tailwindcss"
 
     def test_postcss_includes_autoprefixer(self) -> None:
         """postcss.config.cjs must include autoprefixer plugin."""
@@ -186,7 +179,8 @@ class TestAppTsx:
         app_content = (FRONTEND_ROOT / "src" / "components" / "App.tsx").read_text()
         header_path = FRONTEND_ROOT / "src" / "components" / "Header.tsx"
 
-        # Accept: title in App.tsx directly, OR App uses <Header /> and Header.tsx has it
+        # Accept: title in App.tsx directly, OR App uses <Header /> and Header.tsx
+        # has it
         if "Dark Factory" in app_content and "Mission Control" in app_content:
             return  # title is inline in App.tsx
 
@@ -212,10 +206,18 @@ class TestAppTsx:
         has_dark_bg = any(
             cls in content
             for cls in [
-                "bg-gray-800", "bg-gray-900", "bg-gray-950",
-                "bg-zinc-800", "bg-zinc-900", "bg-zinc-950",
-                "bg-slate-800", "bg-slate-900", "bg-slate-950",
-                "bg-neutral-800", "bg-neutral-900", "bg-neutral-950",
+                "bg-gray-800",
+                "bg-gray-900",
+                "bg-gray-950",
+                "bg-zinc-800",
+                "bg-zinc-900",
+                "bg-zinc-950",
+                "bg-slate-800",
+                "bg-slate-900",
+                "bg-slate-950",
+                "bg-neutral-800",
+                "bg-neutral-900",
+                "bg-neutral-950",
                 "dark:",
             ]
         )
@@ -300,9 +302,7 @@ class TestTypesIndex:
 
     def test_event_type_enum_defined(self, types_content: str) -> None:
         """src/types/index.ts must define EventType enum."""
-        assert "EventType" in types_content, (
-            "src/types/index.ts must define EventType"
-        )
+        assert "EventType" in types_content, "src/types/index.ts must define EventType"
 
     def test_event_type_has_agent_started(self, types_content: str) -> None:
         """EventType must include AGENT_STARTED value."""
@@ -325,9 +325,7 @@ class TestTypesIndex:
     def test_event_interface_has_id_field(self, types_content: str) -> None:
         """Event interface must have an id field."""
         # Look for id: string inside an Event block — simple presence check
-        assert "id:" in types_content, (
-            "Event interface must include 'id' field"
-        )
+        assert "id:" in types_content, "Event interface must include 'id' field"
 
     def test_event_interface_has_timestamp_field(self, types_content: str) -> None:
         """Event interface must have a timestamp field."""
@@ -361,9 +359,7 @@ class TestTypesIndex:
 
     def test_job_summary_has_status_field(self, types_content: str) -> None:
         """JobSummary must have a status field with expected union values."""
-        assert "status" in types_content, (
-            "JobSummary must include 'status' field"
-        )
+        assert "status" in types_content, "JobSummary must include 'status' field"
         assert "pending" in types_content and "running" in types_content, (
             "JobSummary status must include 'pending' and 'running' literal types"
         )
@@ -388,9 +384,7 @@ class TestTypesIndex:
 
     def test_job_detail_has_events_field(self, types_content: str) -> None:
         """JobDetail must have an events: Event[] field."""
-        assert "events" in types_content, (
-            "JobDetail must include 'events' field"
-        )
+        assert "events" in types_content, "JobDetail must include 'events' field"
 
     def test_job_detail_has_description_field(self, types_content: str) -> None:
         """JobDetail must have a description field."""
@@ -414,7 +408,8 @@ class TestApiClient:
 
     def test_get_jobs_function_defined(self, client_content: str) -> None:
         """client.ts must define a getJobs function."""
-        assert re.search(r"(export\s+)?(async\s+)?function\s+getJobs|getJobs\s*=", client_content), (
+        pattern = r"(export\s+)?(async\s+)?function\s+getJobs|getJobs\s*="
+        assert re.search(pattern, client_content), (
             "client.ts must define a getJobs function"
         )
 
@@ -428,7 +423,8 @@ class TestApiClient:
         uses_base_url = "/api/v1" in client_content and (
             '"/jobs"' in client_content
             or "'/jobs'" in client_content
-            or "`${" in client_content and "/jobs" in client_content
+            or "`${" in client_content
+            and "/jobs" in client_content
         )
         assert uses_literal or uses_base_url, (
             "client.ts getJobs must target /api/v1/jobs "
@@ -437,7 +433,8 @@ class TestApiClient:
 
     def test_get_job_function_defined(self, client_content: str) -> None:
         """client.ts must define a getJob function."""
-        assert re.search(r"(export\s+)?(async\s+)?function\s+getJob\b|getJob\s*=", client_content), (
+        pattern = r"(export\s+)?(async\s+)?function\s+getJob\b|getJob\s*="
+        assert re.search(pattern, client_content), (
             "client.ts must define a getJob function"
         )
 
@@ -449,7 +446,8 @@ class TestApiClient:
 
     def test_get_job_log_function_defined(self, client_content: str) -> None:
         """client.ts must define a getJobLog function."""
-        assert re.search(r"(export\s+)?(async\s+)?function\s+getJobLog\b|getJobLog\s*=", client_content), (
+        pattern = r"(export\s+)?(async\s+)?function\s+getJobLog\b|getJobLog\s*="
+        assert re.search(pattern, client_content), (
             "client.ts must define a getJobLog function"
         )
 
@@ -491,7 +489,9 @@ class TestViteConfig:
             "vite.config.ts must define a proxy configuration"
         )
 
-    def test_vite_config_proxies_api_to_localhost_8000(self, vite_config_content: str) -> None:
+    def test_vite_config_proxies_api_to_localhost_8000(
+        self, vite_config_content: str
+    ) -> None:
         """vite.config.ts proxy must route /api to localhost:8000."""
         assert "localhost:8000" in vite_config_content, (
             "vite.config.ts proxy must target http://localhost:8000"
@@ -502,9 +502,9 @@ class TestViteConfig:
 
     def test_vite_config_uses_react_plugin(self, vite_config_content: str) -> None:
         """vite.config.ts must use the @vitejs/plugin-react plugin."""
-        assert "plugin-react" in vite_config_content or "react()" in vite_config_content, (
-            "vite.config.ts must import and use @vitejs/plugin-react"
-        )
+        assert (
+            "plugin-react" in vite_config_content or "react()" in vite_config_content
+        ), "vite.config.ts must import and use @vitejs/plugin-react"
 
 
 class TestFrontendMakefile:
@@ -552,7 +552,9 @@ class TestFrontendMakefile:
 
     def test_install_target_runs_npm(self, makefile_content: str) -> None:
         """install target must run npm install or npm ci."""
-        match = re.search(r"^install:.*\n((?:\t.+\n?)*)", makefile_content, re.MULTILINE)
+        match = re.search(
+            r"^install:.*\n((?:\t.+\n?)*)", makefile_content, re.MULTILINE
+        )
         assert match, "install: target not found"
         body = match.group(1)
         assert "npm" in body, "install target must invoke npm"

@@ -1,4 +1,5 @@
 """Tests for session state persistence."""
+
 from __future__ import annotations
 
 import tempfile

@@ -1,4 +1,5 @@
 """Planner agent — spawns the Architect to break issues into tasks."""
+
 from __future__ import annotations
 
 import logging

@@ -3,27 +3,19 @@
 All tests pass. Code review complete.
 
 ## Summary
-- Tests: 66/66 passing
-- Coverage: 80% (factory/dashboard/)
-- Lint (implementation): clean — `ruff check factory/dashboard/` passes with no issues
-- Types: clean — `mypy factory/dashboard/` passes with no issues
-- Security: no hardcoded secrets, no sensitive data in source
-- Dockerfile: N/A for this scaffold task
+- Tests: 139/139 passing
+- Lint (ruff): clean — developer also fixed 18 pre-existing ruff errors
+- Mypy: 10 pre-existing errors in unchanged/whitespace-only files (base.py, github_client.py, orchestrator.py, templates/) — not introduced by this task; confirmed against main branch
+- Security: no hardcoded secrets found
+- Frontend scaffold: complete
 
-## What Was Reviewed
-
-### Package Structure — PASS
-- `factory/dashboard/__init__.py` — exposes `app`, clean
-- `factory/dashboard/app.py` — `create_app()` + module-level `app` instance, FastAPI with `/api/v1` router prefix
-- `factory/dashboard/db.py` — stub with `from __future__ import annotations`
-- `factory/dashboard/models.py` — stub with `from __future__ import annotations`
-- `factory/dashboard/routers/__init__.py` — stub with `from __future__ import annotations`
-- `dashboard/frontend/` — top-level directory exists
-
-### Config Files — PASS
-- `pyproject.toml`: fastapi, uvicorn[standard], aiosqlite in dependencies; httpx in dev extras
-- `Makefile`: `dashboard` and `dashboard-dev` targets invoking uvicorn with `--reload` on dev
-- `.env.example`: `DASHBOARD_PORT=8420`
-
-## Note on `make check`
-`make check` exits non-zero due to pre-existing lint errors in `factory/agents/`, `factory/orchestrator.py`, `factory/cli.py`, `tests/test_orchestrator.py`, and import-sort issues in `tests/test_dashboard/test_scaffold.py` (the QA test file from Phase 1). None of these errors are in the implementation files introduced by this task. The developer's code (`factory/dashboard/`) is lint-clean and type-clean.
+## Frontend Scaffold Verified
+- `dashboard/frontend/` structure matches contracts.md
+- Vite + React + TypeScript configured (`vite.config.ts`, `tsconfig.json`)
+- Tailwind CSS with dark mode enabled (`tailwind.config.ts`, `postcss.config.cjs`)
+- All required components present: `App.tsx`, `Header.tsx`, `AgentCards.tsx`, `TaskProgress.tsx`, `LiveLog.tsx`, `JobHistory.tsx`
+- TypeScript types defined in `src/types/index.ts`
+- API client stub at `src/api/client.ts`
+- Frontend `Makefile` with `install`, `dev`, `build`, `clean` targets
+- `/api` proxy configured in `vite.config.ts` pointing to `http://localhost:8000`
+- `contracts.md` documents directory structure and component responsibilities

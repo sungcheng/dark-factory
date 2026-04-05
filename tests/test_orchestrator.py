@@ -1,4 +1,5 @@
 """Tests for the orchestrator — task batching and job flow."""
+
 from __future__ import annotations
 
 import pytest
@@ -14,8 +15,11 @@ class TestGetReadyBatches:
         """A single task with no dependencies yields one batch."""
         tasks = [
             TaskInfo(
-                id="t1", title="Setup", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="Setup",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
         ]
         batches = list(get_ready_batches(tasks))
@@ -26,16 +30,25 @@ class TestGetReadyBatches:
         """Tasks that depend on each other run sequentially."""
         tasks = [
             TaskInfo(
-                id="t1", title="First", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="First",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
             TaskInfo(
-                id="t2", title="Second", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t2",
+                title="Second",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
             TaskInfo(
-                id="t3", title="Third", description="",
-                acceptance_criteria=[], depends_on=["t2"],
+                id="t3",
+                title="Third",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t2"],
             ),
         ]
         batches = list(get_ready_batches(tasks))
@@ -48,16 +61,25 @@ class TestGetReadyBatches:
         """Tasks with same dependency run in parallel."""
         tasks = [
             TaskInfo(
-                id="t1", title="Setup", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="Setup",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
             TaskInfo(
-                id="t2", title="Health", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t2",
+                title="Health",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
             TaskInfo(
-                id="t3", title="Client", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t3",
+                title="Client",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
         ]
         batches = list(get_ready_batches(tasks))
@@ -69,19 +91,30 @@ class TestGetReadyBatches:
         """Diamond pattern: t1 -> t2,t3 -> t4."""
         tasks = [
             TaskInfo(
-                id="t1", title="Setup", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="Setup",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
             TaskInfo(
-                id="t2", title="A", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t2",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
             TaskInfo(
-                id="t3", title="B", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t3",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
             TaskInfo(
-                id="t4", title="Final", description="",
+                id="t4",
+                title="Final",
+                description="",
                 acceptance_criteria=[],
                 depends_on=["t2", "t3"],
             ),
@@ -96,16 +129,25 @@ class TestGetReadyBatches:
         """Tasks with no dependencies all run in one batch."""
         tasks = [
             TaskInfo(
-                id="t1", title="A", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
             TaskInfo(
-                id="t2", title="B", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t2",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
             TaskInfo(
-                id="t3", title="C", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t3",
+                title="C",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
             ),
         ]
         batches = list(get_ready_batches(tasks))
@@ -116,12 +158,18 @@ class TestGetReadyBatches:
         """Circular dependency raises RuntimeError."""
         tasks = [
             TaskInfo(
-                id="t1", title="A", description="",
-                acceptance_criteria=[], depends_on=["t2"],
+                id="t1",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t2"],
             ),
             TaskInfo(
-                id="t2", title="B", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t2",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
         ]
         with pytest.raises(RuntimeError, match="Deadlock"):
@@ -136,13 +184,19 @@ class TestGetReadyBatches:
         """Already-completed tasks are skipped when resuming."""
         tasks = [
             TaskInfo(
-                id="t1", title="Done", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="Done",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
                 status="completed",
             ),
             TaskInfo(
-                id="t2", title="Next", description="",
-                acceptance_criteria=[], depends_on=["t1"],
+                id="t2",
+                title="Next",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t1"],
             ),
         ]
         batches = list(get_ready_batches(tasks))
@@ -153,23 +207,34 @@ class TestGetReadyBatches:
         """Resume with some completed, some pending."""
         tasks = [
             TaskInfo(
-                id="t1", title="Done1", description="",
-                acceptance_criteria=[], depends_on=[],
+                id="t1",
+                title="Done1",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
                 status="completed",
             ),
             TaskInfo(
-                id="t2", title="Done2", description="",
-                acceptance_criteria=[],
-                depends_on=["t1"], status="completed",
-            ),
-            TaskInfo(
-                id="t3", title="Pending", description="",
-                acceptance_criteria=[], depends_on=["t2"],
-            ),
-            TaskInfo(
-                id="t4", title="Also Pending",
+                id="t2",
+                title="Done2",
                 description="",
-                acceptance_criteria=[], depends_on=["t2"],
+                acceptance_criteria=[],
+                depends_on=["t1"],
+                status="completed",
+            ),
+            TaskInfo(
+                id="t3",
+                title="Pending",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t2"],
+            ),
+            TaskInfo(
+                id="t4",
+                title="Also Pending",
+                description="",
+                acceptance_criteria=[],
+                depends_on=["t2"],
             ),
         ]
         batches = list(get_ready_batches(tasks))
