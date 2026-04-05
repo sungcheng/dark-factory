@@ -44,7 +44,7 @@ async def run_evaluator_red(
     config = AgentConfig(
         role="QA Engineer (RED)",
         prompt=prompt,
-        allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
+        allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         working_dir=working_dir,
         model=model,
     )
@@ -87,7 +87,7 @@ async def run_evaluator_contracts(
     config = AgentConfig(
         role="QA Engineer (Contracts)",
         prompt=prompt,
-        allowed_tools=["Read", "Write", "Glob", "Grep"],
+        allowed_tools=["Read", "Write", "Edit", "Glob", "Grep"],
         working_dir=working_dir,
         model=model,
     )
@@ -154,7 +154,7 @@ async def run_evaluator_review(
     config = AgentConfig(
         role="QA Engineer (Review)",
         prompt=prompt,
-        allowed_tools=["Read", "Write", "Bash", "Glob", "Grep"],
+        allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
         working_dir=working_dir,
         model=model,
     )
