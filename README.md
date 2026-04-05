@@ -108,7 +108,8 @@ dark-factory start --repo weather-api --issue 1 -v
 
 ```bash
 make help                                    # show all commands
-make test                                    # run tests
+make test                                    # run tests (excludes slow/frontend)
+make test-all                                # run all tests including frontend
 make test-cov                                # tests + coverage
 make check                                   # lint + types
 make format                                  # auto-format
@@ -117,6 +118,9 @@ make start repo=weather-api issue=1          # single job
 make run repo=weather-api                    # all open issues
 make retry repo=weather-api issue=1          # retry failed tasks
 make create-issue repo=weather-api title="X" # create issue (opens editor)
+make dashboard                               # run dashboard server
+make dashboard-dev                           # run dashboard with hot reload
+make dashboard-stop                          # stop background dashboard
 make clean-state                             # clear saved state
 ```
 
@@ -183,10 +187,42 @@ dark-factory/
 │       ├── planner.md      # Architect rules & personality
 │       ├── evaluator.md    # QA Engineer rules & personality
 │       └── generator.md    # Developer rules & personality
-├── tests/                  # Unit tests (42 passing)
+├── tests/                  # Unit tests (353 passing)
+├── dashboard/
+│   └── frontend/           # React + TypeScript + Tailwind dashboard
 ├── DESIGN.md               # Full design document
 └── diagrams/               # Architecture diagrams
 ```
+
+## Mission Control Dashboard
+
+The dashboard auto-starts when you run the factory. View it at http://localhost:8420/docs (API) or http://localhost:5173 (React UI).
+
+```bash
+# API server (auto-starts with factory, or run manually)
+make dashboard              # production mode
+make dashboard-dev          # with hot reload
+
+# React frontend
+cd dashboard/frontend
+npm install                 # first time only
+npm run dev                 # http://localhost:5173
+
+# Stop background dashboard
+make dashboard-stop
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/events` | POST | Submit lifecycle events |
+| `/api/v1/jobs` | GET | List all jobs |
+| `/api/v1/jobs/{id}` | GET | Job detail with tasks |
+| `/api/v1/jobs/{id}/log` | GET | Chronological event log |
+| `/docs` | GET | Swagger UI |
+
+The orchestrator emits events automatically when `DASHBOARD_URL` is set (defaults to `http://localhost:8420`).
 
 ## Performance Optimizations
 
@@ -194,6 +230,10 @@ dark-factory/
 |---|---|
 | **Contracts first** | QA writes interface contracts before tests — Developer scaffolds in parallel |
 | **Smart QA review** | Run `make test + make check` directly — skip QA agent if tests pass |
+| **Auto-fix test lint** | Run `ruff fix + format` on QA test files before `make check` |
+| **Self-healing regression** | If regression gate fails, spawn Developer to fix before giving up |
+| **Post-merge validation** | After all tasks merge, run full check on main — self-heal if needed |
+| **Auto npm install** | Detect `package.json` in frontend dirs and install deps automatically |
 | **Skip empty regression** | No regression gate when repo has no tests yet |
 | **Haiku for simple tasks** | Contracts and regression use haiku (10x faster than sonnet) |
 | **Parallel task batches** | Independent tasks run simultaneously via asyncio.gather |
@@ -219,8 +259,9 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 ## Roadmap
 
 - **Phase 1** — Factory core (orchestrator, agents, CLI) ✅
-- **Phase 2** — CI/CD pipeline (Dockerfile, GitHub Actions, Docker Compose)
-- **Phase 3** — Mission Control dashboard (real-time monitoring) 🔄
-- **Phase 4** — Kubernetes (k3d + ArgoCD)
+- **Phase 2** — CI/CD for dark-factory (GitHub Actions — lint + tests) ✅
+- **Phase 3** — Mission Control dashboard (Status API + React frontend) ✅
+- **Phase 4** — CI/CD for built projects (Dockerfile, Docker Compose, deploy)
+- **Phase 5** — Kubernetes (k3d + ArgoCD)
 
 See [DESIGN.md](DESIGN.md) for the full architecture.

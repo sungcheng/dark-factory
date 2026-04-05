@@ -219,6 +219,7 @@ async def run_job(
         LOG.info("🔍 Running post-merge validation...")
         await _checkout_main(ctx)
         await _pull_latest(ctx)
+        await _install_frontend_deps(ctx.working_dir)
         validation_ok = await _post_merge_validation(
             ctx,
             model,
@@ -855,6 +856,49 @@ async def _run_tests_with_check(
     return True, test_output
 
 
+async def _install_frontend_deps(working_dir: str) -> None:
+    """Find any package.json files and run npm install.
+
+    Searches common frontend locations. Skips if npm is not
+    installed or if node_modules already exists.
+    """
+    import shutil
+
+    if not shutil.which("npm"):
+        return
+
+    search_dirs = [
+        Path(working_dir),
+        Path(working_dir) / "dashboard" / "frontend",
+        Path(working_dir) / "frontend",
+    ]
+
+    for d in search_dirs:
+        pkg = d / "package.json"
+        modules = d / "node_modules"
+        if pkg.exists() and not modules.exists():
+            LOG.info("📦 Installing npm deps in %s", d.name)
+            proc = await asyncio.create_subprocess_exec(
+                "npm",
+                "install",
+                cwd=str(d),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(
+                proc.communicate(),
+                timeout=120,
+            )
+            if proc.returncode == 0:
+                LOG.info("📦 npm install complete in %s", d.name)
+            else:
+                LOG.warning(
+                    "⚠️ npm install failed in %s (exit %d)",
+                    d.name,
+                    proc.returncode or -1,
+                )
+
+
 async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
     """Clone the target repo into a temp directory."""
     import tempfile
@@ -875,6 +919,10 @@ async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
         raise RuntimeError(f"Failed to clone {ctx.repo_name}")
 
     LOG.info("Cloned %s to %s", ctx.repo_name, work_dir)
+
+    # Install frontend deps if a package.json exists
+    await _install_frontend_deps(work_dir)
+
     return work_dir
 
 

@@ -471,7 +471,7 @@ class TestApiClient:
 
 
 class TestViteConfig:
-    """Vite dev server proxies /api to localhost:8000."""
+    """Vite dev server proxies /api to localhost:8420."""
 
     @pytest.fixture()
     def vite_config_content(self) -> str:
@@ -489,12 +489,12 @@ class TestViteConfig:
             "vite.config.ts must define a proxy configuration"
         )
 
-    def test_vite_config_proxies_api_to_localhost_8000(
+    def test_vite_config_proxies_api_to_localhost_8420(
         self, vite_config_content: str
     ) -> None:
-        """vite.config.ts proxy must route /api to localhost:8000."""
-        assert "localhost:8000" in vite_config_content, (
-            "vite.config.ts proxy must target http://localhost:8000"
+        """vite.config.ts proxy must route /api to localhost:8420."""
+        assert "localhost:8420" in vite_config_content, (
+            "vite.config.ts proxy must target http://localhost:8420"
         )
         assert "/api" in vite_config_content, (
             "vite.config.ts proxy must match /api path"
