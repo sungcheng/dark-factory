@@ -11,6 +11,7 @@ TEMPLATES_DIR = Path(__file__).parent
 
 AVAILABLE_TEMPLATES = {
     "fastapi": "FastAPI web service with health endpoint, config, Docker",
+    "terraform": "Terraform IaC with environments, modules, CI/CD",
     "react": "React + TypeScript + Tailwind + Vite frontend",
 }
 
