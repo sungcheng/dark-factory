@@ -63,6 +63,8 @@ Every project the factory builds must include:
 - GitHub Actions CI workflow
 - Type hints on all functions
 - Docstrings on public functions
+- API versioning: all endpoints under `/api/v1/` prefix
+- Pydantic models for all request/response schemas
 
 ## Task Sizing Guidelines
 

@@ -24,7 +24,8 @@ Your job is to write production code that makes all failing tests pass.
 
 ### Architecture
 - FastAPI for web services
-- Pydantic for data validation
+- API versioning: all endpoints under `/api/v1/` prefix using `APIRouter(prefix="/api/v1")`
+- Pydantic for data validation (all request/response schemas)
 - SQLAlchemy for database access (if needed)
 - Parameterized queries — never string-concatenate SQL
 - Environment variables for all configuration (python-dotenv)

@@ -43,6 +43,13 @@ make help           # Show all commands
 - Run `bandit -r factory/` to check for security issues when touching security-sensitive code
 - Validate all external input at system boundaries
 
+### API Standards
+- All APIs must be versioned: `/api/v1/resource` not `/api/resource`
+- Use FastAPI routers with version prefix: `router = APIRouter(prefix="/api/v1")`
+- Pydantic models for all request/response schemas
+- Proper HTTP status codes (201 for created, 404 for not found, 422 for validation)
+- Include OpenAPI docs (FastAPI auto-generates these)
+
 ### Code Quality
 - Always validate your changes compile and pass tests before returning
 - Abstract repeated patterns into shared modules when used 3+ times
