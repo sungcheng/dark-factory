@@ -68,19 +68,7 @@ async def run_job(
     has_existing_tests = await _has_tests(ctx.working_dir)
     if has_existing_tests:
         LOG.info("🛡️ Running regression gate...")
-        await run_evaluator_regression(
-            working_dir=ctx.working_dir,
-            model="haiku",  # Use haiku — just running tests
-        )
-        regression_fail = Path(ctx.working_dir) / "regression-fail.md"
-        if regression_fail.exists():
-            LOG.error("💥 Regression gate FAILED — existing tests are broken")
-            raise RuntimeError(
-                "Regression gate failed. "
-                "Fix existing tests before adding new features. "
-                f"See: {regression_fail}"
-            )
-        _cleanup_file(ctx.working_dir, "regression-pass.md")
+        await _regression_gate_with_healing(ctx, model)
     else:
         LOG.info("🛡️ Skipping regression gate — no existing tests")
 
@@ -580,6 +568,85 @@ async def _has_tests(working_dir: str) -> bool:
         return False
     test_files = list(tests_dir.glob("test_*.py"))
     return len(test_files) > 0
+
+
+async def _regression_gate_with_healing(
+    ctx: JobContext,
+    model: str | None = None,
+    max_heal_attempts: int = 2,
+) -> None:
+    """Run regression gate. If it fails, spawn Developer to fix.
+
+    Self-healing: instead of dying on broken tests, give the
+    Developer a chance to fix them (missing deps, dirs, imports).
+    """
+    for attempt in range(1, max_heal_attempts + 1):
+        await run_evaluator_regression(
+            working_dir=ctx.working_dir,
+            model="haiku",
+        )
+        regression_fail = (
+            Path(ctx.working_dir) / "regression-fail.md"
+        )
+        if not regression_fail.exists():
+            _cleanup_file(ctx.working_dir, "regression-pass.md")
+            if attempt > 1:
+                LOG.info(
+                    "🩹 Self-healed after %d attempt(s)",
+                    attempt - 1,
+                )
+            return  # Tests pass — continue
+
+        if attempt < max_heal_attempts:
+            feedback = regression_fail.read_text()
+            LOG.warning(
+                "🩹 Regression gate failed — "
+                "spawning Developer to self-heal (attempt %d/%d)",
+                attempt,
+                max_heal_attempts - 1,
+            )
+            _cleanup_file(ctx.working_dir, "regression-fail.md")
+            await run_generator(
+                task_title="Fix broken regression tests",
+                task_description=(
+                    "The regression gate found broken tests. "
+                    "Fix the issues described below. "
+                    "You MAY fix test files, source files, "
+                    "config files, or add missing deps.\n\n"
+                    f"## Failure Details\n\n{feedback}"
+                ),
+                acceptance_criteria=[
+                    "All existing tests pass",
+                    "make test exits with code 0",
+                ],
+                round_number=1,
+                working_dir=ctx.working_dir,
+                model=model,
+            )
+            # Commit the fix
+            proc = await asyncio.create_subprocess_exec(
+                "git", "add", "-A",
+                cwd=ctx.working_dir,
+            )
+            await proc.wait()
+            proc = await asyncio.create_subprocess_exec(
+                "git", "commit", "-m",
+                "fix: self-heal broken regression tests",
+                cwd=ctx.working_dir,
+            )
+            await proc.wait()
+        else:
+            LOG.error(
+                "💥 Regression gate FAILED after "
+                "%d heal attempt(s)",
+                max_heal_attempts - 1,
+            )
+            raise RuntimeError(
+                "Regression gate failed. "
+                "Fix existing tests before adding "
+                "new features. "
+                f"See: {regression_fail}"
+            )
 
 
 async def _run_tests_with_check(
