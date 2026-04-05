@@ -117,8 +117,8 @@ async def run_job(
         save_state(state)
         LOG.info("📝 Created %d tasks with GitHub sub-issues", len(ctx.tasks))
 
-    # Step 5: Process tasks in dependency order
-    failed_tasks: list[TaskInfo] = []
+    # Step 5: Process tasks in dependency order, push + PR incrementally
+    pr_number: int | None = state.pr_number
 
     for batch in get_ready_batches(ctx.tasks):
         batch_titles = [t.title for t in batch]
@@ -129,80 +129,73 @@ async def run_job(
         else:
             await _process_batch_parallel(batch, ctx, github, model, state)
 
-        # Collect failures from this batch
-        for t in batch:
-            if t.status == "failed":
-                failed_tasks.append(t)
-
-    # Step 6: Push and open PR
-    await _push_changes(ctx)
-
-    if failed_tasks:
-        # Some tasks failed — open draft PR and create failure issues
+        # Push after each batch and open/update PR
         completed = [t for t in ctx.tasks if t.status == "completed"]
-        pr = github.create_draft_pr(
-            repo_name=repo_name,
-            branch=ctx.branch,
-            title=f"draft: {issue.title}",
-            body=(
-                f"Related: #{issue_number}\n\n"
-                f"Partial implementation by Dark Factory.\n\n"
-                f"## Tasks completed\n"
-                + "\n".join(f"- [x] {t.title}" for t in completed)
-                + "\n\n## Tasks failed (needs human input)\n"
-                + "\n".join(f"- [ ] {t.title}" for t in failed_tasks)
-            ),
-        )
-        LOG.warning("📝 Opened draft PR #%d with %d failed tasks", pr.number, len(failed_tasks))
+        failed = [t for t in ctx.tasks if t.status == "failed"]
+        pending = [t for t in ctx.tasks if t.status == "pending"]
 
-        # Create a needs-human issue for each failed task
-        for task in failed_tasks:
+        if completed:
+            await _push_changes(ctx)
+
+            if pr_number is None:
+                # Open PR on first completed task
+                pr = github.create_pr(
+                    repo_name=repo_name,
+                    branch=ctx.branch,
+                    title=f"feat: {issue.title}",
+                    body=_build_pr_body(issue_number, completed, failed, pending),
+                )
+                pr_number = pr.number
+                state.pr_number = pr_number
+                save_state(state)
+                LOG.info("🚀 Opened PR #%d", pr_number)
+            else:
+                # Update existing PR body with progress
+                repo = github.get_repo(repo_name)
+                pr = repo.get_pull(pr_number)
+                pr.edit(body=_build_pr_body(issue_number, completed, failed, pending))
+                LOG.info("📝 Updated PR #%d (%d/%d tasks done)", pr_number, len(completed), len(ctx.tasks))
+
+    # Step 6: Finalize
+    completed = [t for t in ctx.tasks if t.status == "completed"]
+    failed = [t for t in ctx.tasks if t.status == "failed"]
+
+    if failed:
+        # Create needs-human issues for failed tasks
+        for task in failed:
             feedback = _read_feedback(ctx.working_dir)
             failure_issue = github.create_failure_issue(
                 repo_name=repo_name,
                 parent_issue=issue_number,
-                pr_number=pr.number,
+                pr_number=pr_number or 0,
                 task=task,
                 feedback=feedback,
                 round_count=MAX_ROUNDS,
             )
             task.failure_issue = failure_issue.number
             LOG.info(
-                "Created needs-human issue #%d for task '%s'",
+                "⚠️ Created needs-human issue #%d for task '%s'",
                 failure_issue.number,
                 task.title,
             )
 
-        state.pr_number = pr.number
         save_state(state)
         LOG.warning(
-            "Job paused. %d task(s) need human input. "
+            "⏸️ Job paused. %d task(s) need human input. "
             "Comment on the needs-human issues and run: "
             "dark-factory retry --repo %s --issue %d",
-            len(failed_tasks),
+            len(failed),
             repo_name,
             issue_number,
         )
     else:
-        # All tasks passed — open PR and auto-merge
-        pr = github.create_pr(
-            repo_name=repo_name,
-            branch=ctx.branch,
-            title=f"feat: {issue.title}",
-            body=(
-                f"Closes #{issue_number}\n\n"
-                f"Autonomous implementation by Dark Factory.\n\n"
-                f"## Tasks completed\n"
-                + "\n".join(f"- [x] {t.title}" for t in ctx.tasks)
-            ),
-        )
-        LOG.info("🚀 Opened PR #%d", pr.number)
-
-        github.merge_pr(repo_name, pr.number)
+        # All tasks passed — merge and close
+        if pr_number:
+            github.merge_pr(repo_name, pr_number)
         github.close_issue(repo_name, issue_number)
         state.status = "completed"
         save_state(state)
-        LOG.info("✅ Job complete. PR #%d merged.", pr.number)
+        LOG.info("✅ Job complete. PR #%d merged.", pr_number)
 
 
 async def retry_job(
@@ -524,6 +517,23 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
         )
         for t in raw
     ]
+
+
+def _build_pr_body(
+    issue_number: int,
+    completed: list[TaskInfo],
+    failed: list[TaskInfo],
+    pending: list[TaskInfo],
+) -> str:
+    """Build PR body showing task progress."""
+    body = f"Closes #{issue_number}\n\nAutonomous implementation by Dark Factory.\n\n"
+    if completed:
+        body += "## Completed\n" + "\n".join(f"- [x] {t.title}" for t in completed) + "\n\n"
+    if failed:
+        body += "## Failed (needs human input)\n" + "\n".join(f"- [ ] {t.title}" for t in failed) + "\n\n"
+    if pending:
+        body += "## Pending\n" + "\n".join(f"- [ ] {t.title}" for t in pending) + "\n\n"
+    return body
 
 
 def _read_feedback(working_dir: str) -> str:
