@@ -40,6 +40,10 @@ create-issue:			## Create issue (usage: make create-issue repo=weather-api title
 retry:				## Retry failed tasks (usage: make retry repo=weather-api issue=1)
 	uv run dark-factory retry --repo $(repo) --issue $(issue)
 
+issues:				## List issues (usage: make issues repo=weather-app [limit=50])
+	@owner=$$(python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(os.getenv('GITHUB_OWNER',''))"); \
+	gh issue list --repo "$$owner/$(repo)" --limit $(or $(limit),50) --state all
+
 create-project:			## Create new project repo (usage: make create-project name=weather-api)
 	uv run dark-factory create-project $(name)
 
