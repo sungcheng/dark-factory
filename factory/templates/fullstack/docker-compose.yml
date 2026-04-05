@@ -1,0 +1,40 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=staging
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend-prod:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=production
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  frontend-prod:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-prod
+    restart: unless-stopped
+    profiles:
+      - prod

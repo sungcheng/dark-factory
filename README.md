@@ -56,11 +56,12 @@ GITHUB_OWNER=sungcheng
 dark-factory create-project weather-api                    # bare repo (private)
 dark-factory create-project weather-api --public           # public repo
 dark-factory create-project weather-api -t fastapi         # with FastAPI template
+dark-factory create-project weather-app -t fullstack       # FastAPI + React
 dark-factory create-project infra -t terraform             # with Terraform template
 dark-factory create-project weather-api -d "Weather API"   # with description
 ```
 
-Creates a GitHub repo with CLAUDE.md, CI/CD workflow, and README. Without `--template`, the Architect scaffolds the project based on the first issue. Available templates: `fastapi`, `terraform`.
+Creates a GitHub repo with CLAUDE.md, CI/CD workflow, and README. Without `--template`, the Architect scaffolds the project based on the first issue. Available templates: `fastapi`, `fullstack`, `terraform`.
 
 ### Create an issue
 
@@ -198,7 +199,8 @@ dark-factory/
 │   │   └── generator.py    # Developer agent (scaffold + implementation)
 │   ├── project.py          # create-project command (repo + scaffold + CI)
 │   ├── templates/
-│   │   ├── fastapi/        # FastAPI project scaffold
+│   │   ├── fastapi/        # FastAPI API scaffold
+│   │   ├── fullstack/      # FastAPI + React scaffold
 │   │   └── terraform/      # Terraform IaC scaffold
 │   └── prompts/
 │       ├── planner.md      # Architect rules & personality

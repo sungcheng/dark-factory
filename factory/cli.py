@@ -226,7 +226,7 @@ def create_issue(
 @click.option(
     "--template",
     "-t",
-    type=click.Choice(["fastapi", "terraform"]),
+    type=click.Choice(["fastapi", "fullstack", "terraform"]),
     default=None,
     help="Apply a project template (optional)",
 )

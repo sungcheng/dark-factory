@@ -78,9 +78,49 @@ jobs:
       - run: terraform plan -var-file=environments/staging/terraform.tfvars -no-color
 """
 
+CI_FULLSTACK = """\
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --all-extras
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
+      - run: uv run pytest tests/ -v --tb=short
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run build
+"""
+
 CI_WORKFLOWS: dict[str | None, str] = {
     None: CI_PYTHON,
     "fastapi": CI_PYTHON,
+    "fullstack": CI_FULLSTACK,
     "terraform": CI_TERRAFORM,
 }
 
@@ -183,7 +223,29 @@ def _write_claude_md(
     """Write CLAUDE.md with project-appropriate rules."""
     security = generate_security_policy()
 
-    if template == "terraform":
+    if template == "fullstack":
+        content = (
+            f"# CLAUDE.md\n\n"
+            f"Project: {name} (Fullstack)\n\n"
+            f"## Structure\n\n"
+            f"- `backend/` — FastAPI API\n"
+            f"- `frontend/` — React + Vite + Tailwind\n\n"
+            f"## Build & Test\n\n"
+            f"```bash\n"
+            f"make develop    # Install backend + frontend deps\n"
+            f"make test       # Run backend tests\n"
+            f"make check      # Lint backend\n"
+            f"make staging    # Docker Compose (localhost:8001 + :3001)\n"
+            f"```\n\n"
+            f"## Rules\n\n"
+            f"- Backend APIs under `/api/v1/`\n"
+            f"- Frontend proxies `/api` to backend\n"
+            f"- Tests required for all backend features\n"
+            f"- No secrets in code\n"
+            f"- Type hints on all Python functions\n\n"
+            f"{security}\n"
+        )
+    elif template == "terraform":
         content = (
             f"# CLAUDE.md\n\n"
             f"Project: {name} (Terraform)\n\n"
@@ -239,7 +301,30 @@ def _write_readme(
     """Write a README appropriate for the project type."""
     desc = description or "Built by Dark Factory."
 
-    if template == "terraform":
+    if template == "fullstack":
+        content = (
+            f"# {name}\n\n"
+            f"{desc}\n\n"
+            f"## Setup\n\n"
+            f"```bash\n"
+            f"make develop    # install all deps\n"
+            f"```\n\n"
+            f"## Development\n\n"
+            f"```bash\n"
+            f"# Backend\n"
+            f"cd backend && make test\n\n"
+            f"# Frontend\n"
+            f"cd frontend && npm run dev   # http://localhost:5173\n"
+            f"```\n\n"
+            f"## Deploy\n\n"
+            f"```bash\n"
+            f"make staging       # backend :8001, frontend :3001\n"
+            f"make prod          # backend :8000, frontend :3000\n"
+            f"make staging-down  # stop staging\n"
+            f"make prod-down     # stop production\n"
+            f"```\n"
+        )
+    elif template == "terraform":
         content = (
             f"# {name}\n\n"
             f"{desc}\n\n"
