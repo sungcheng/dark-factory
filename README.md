@@ -50,6 +50,24 @@ GITHUB_OWNER=sungcheng
 
 ## Usage
 
+### Create a new project
+
+```bash
+dark-factory create-project weather-api                    # bare repo (private)
+dark-factory create-project weather-api --public           # public repo
+dark-factory create-project weather-api -t fastapi         # with FastAPI template
+dark-factory create-project weather-api -d "Weather API"   # with description
+```
+
+Creates a GitHub repo with CLAUDE.md, CI/CD workflow, and README. Without `--template`, the Architect scaffolds the project based on the first issue.
+
+### Create an issue
+
+```bash
+dark-factory create-issue --repo weather-api --title "Build weather API" --editor
+dark-factory create-issue --repo weather-api --title "Add caching" -b "Cache for 5 min" -l enhancement
+```
+
 ### Start a job (single issue)
 
 ```bash
@@ -61,13 +79,6 @@ dark-factory start --repo weather-api --issue 1
 ```bash
 dark-factory run --repo weather-api
 dark-factory run --repo weather-api --parallel  # independent issues in parallel
-```
-
-### Create an issue
-
-```bash
-dark-factory create-issue --repo weather-api --title "Add caching" --editor
-dark-factory create-issue --repo weather-api --title "Add caching" -b "Cache for 5 min" -l enhancement
 ```
 
 ### Retry failed tasks
@@ -117,6 +128,7 @@ make repos                                   # list GitHub repos
 make start repo=weather-api issue=1          # single job
 make run repo=weather-api                    # all open issues
 make retry repo=weather-api issue=1          # retry failed tasks
+make create-project name=weather-api          # create new project repo
 make create-issue repo=weather-api title="X" # create issue (opens editor)
 make dashboard                               # run dashboard server
 make dashboard-dev                           # run dashboard with hot reload

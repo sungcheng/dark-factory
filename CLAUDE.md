@@ -77,6 +77,12 @@ make help           # Show all commands
 - New features should follow existing patterns — look at how similar things are done before adding something new
 - Keep dependencies minimal — don't add a library for something the stdlib handles
 
+## Documentation
+
+- Always update README.md and DESIGN.md after making code changes (new features, commands, templates, config)
+- Do not wait for the user to ask — docs should stay in sync with code automatically
+- Include doc updates in the same commit or as a follow-up in the same session
+
 ## Hard Boundaries (never break these)
 
 - Generator agent CANNOT access test files
