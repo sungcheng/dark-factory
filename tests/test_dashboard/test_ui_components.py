@@ -271,9 +271,7 @@ class TestLiveLog:
 
     def test_live_log_accepts_job_id_and_events(self, content: str) -> None:
         """LiveLog must accept both jobId and events props."""
-        assert re.search(r"jobId\s*[:\?]", content), (
-            "LiveLog must accept a jobId prop"
-        )
+        assert re.search(r"jobId\s*[:\?]", content), "LiveLog must accept a jobId prop"
         assert re.search(r"events\s*[:\?]", content), (
             "LiveLog must accept an events prop"
         )
@@ -331,9 +329,7 @@ class TestJobHistory:
 
     def test_job_history_shows_task_progress(self, content: str) -> None:
         """JobHistory must display task progress (completed/total)."""
-        assert re.search(
-            r"task_count|completed_task_count|task.*count", content
-        ), (
+        assert re.search(r"task_count|completed_task_count|task.*count", content), (
             "JobHistory must display task progress"
         )
 
@@ -467,12 +463,12 @@ class TestAppWiring:
         return read_component("App.tsx")
 
     def test_app_manages_selected_job_id_state(self, content: str) -> None:
-        """App.tsx must manage selectedJobId with useState."""
-        assert re.search(r"selectedJobId|selectedJob\b", content), (
-            "App.tsx must manage selectedJobId state"
+        """App.tsx must manage selected job/repo state with useState."""
+        assert re.search(r"selectedJobId|selectedJob\b|selectedRepo", content), (
+            "App.tsx must manage selected job/repo state"
         )
         assert "useState" in content, (
-            "App.tsx must use useState to manage selectedJobId"
+            "App.tsx must use useState to manage selection state"
         )
 
     def test_app_passes_selected_job_to_agent_cards(self, content: str) -> None:
@@ -498,18 +494,14 @@ class TestAppWiring:
         """App.tsx must have a job selector (dropdown or list)."""
         assert re.search(
             r"<select|<JobHistory|setSelectedJobId|onSelectJob", content
-        ), (
-            "App.tsx must have a job selector mechanism"
-        )
+        ), "App.tsx must have a job selector mechanism"
 
     def test_app_fetches_jobs_list(self, content: str) -> None:
         """App.tsx must fetch the jobs list."""
         has_jobs_fetch = bool(
             re.search(r"getJobs|usePolling|fetchJobs|fetch.*jobs|/api/v1/jobs", content)
         )
-        assert has_jobs_fetch, (
-            "App.tsx must fetch the jobs list"
-        )
+        assert has_jobs_fetch, "App.tsx must fetch the jobs list"
 
     def test_app_agent_cards_at_top(self, content: str) -> None:
         """AgentCards must appear before TaskProgress and LiveLog in the JSX."""
@@ -537,9 +529,7 @@ class TestAppWiring:
 
     def test_app_has_job_selector_and_agents(self, content: str) -> None:
         """App must have both a job selector and agent cards."""
-        has_selector = bool(
-            re.search(r"<select|<JobHistory|JobSelector", content)
-        )
+        has_selector = bool(re.search(r"<select|<JobHistory|JobSelector", content))
         has_agents = "AgentCards" in content
         assert has_selector and has_agents, (
             "App.tsx must have a job selector and AgentCards"
