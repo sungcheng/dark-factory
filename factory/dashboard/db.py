@@ -219,30 +219,36 @@ async def fetch_events_for_job(
     if not task_ids and not job_id:
         return []
 
-    if job_id:
-        # Prefer job_id scoping — no cross-run collisions
-        query = """\
-            SELECT id, task_id, event_type, status, message, timestamp, job_id
-            FROM events
-            WHERE job_id = ?
-            ORDER BY timestamp ASC
-        """
-        params: tuple[str, ...] = (job_id,)
-    else:
-        placeholders = ",".join("?" for _ in task_ids)
-        query = f"""\
-            SELECT id, task_id, event_type, status, message, timestamp, job_id
-            FROM events
-            WHERE task_id IN ({placeholders})
-            ORDER BY timestamp ASC
-        """
-        params = tuple(task_ids)
+    rows: list[aiosqlite.Row] = []
 
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(_CREATE_EVENTS_SQL)
         conn.row_factory = aiosqlite.Row
-        async with conn.execute(query, params) as cursor:
-            rows = await cursor.fetchall()
+
+        # Try job_id scoping first (no cross-run collisions)
+        if job_id:
+            query = """\
+                SELECT id, task_id, event_type, status, message,
+                       timestamp, job_id
+                FROM events
+                WHERE job_id = ?
+                ORDER BY timestamp ASC
+            """
+            async with conn.execute(query, (job_id,)) as cursor:
+                rows = list(await cursor.fetchall())
+
+        # Fall back to task_id matching (backward compat for old events)
+        if not rows and task_ids:
+            placeholders = ",".join("?" for _ in task_ids)
+            query = f"""\
+                SELECT id, task_id, event_type, status, message,
+                       timestamp, job_id
+                FROM events
+                WHERE task_id IN ({placeholders})
+                ORDER BY timestamp ASC
+            """
+            async with conn.execute(query, tuple(task_ids)) as cursor:
+                rows = list(await cursor.fetchall())
 
     return [
         EventOut(
