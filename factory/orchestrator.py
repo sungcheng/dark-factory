@@ -971,6 +971,25 @@ async def _process_task(
     if emitter:
         await emitter.emit_task_started(task.id)
 
+    # Pre-check: feature might already exist (resumed job, previous run)
+    pre_passed, _ = await _run_tests_with_check(ctx.working_dir)
+    if pre_passed:
+        LOG.info("  ⏭️ Tests already pass — feature exists, skipping Developer")
+        if emitter:
+            await emitter.emit_log(
+                task.id,
+                "⏭️ Tests already pass — skipping Developer",
+                "success",
+            )
+            await emitter.emit_round_result(task.id, 0, passed=True)
+            await emitter.emit_task_completed(task.id)
+        task.status = "completed"
+        await _commit_task(ctx, task)
+        if task.issue_number:
+            github.close_issue(ctx.repo_name, task.issue_number)
+        save_state(state)
+        return
+
     # Developer builds feature: code + tests + make it pass
     # No separate QA test-writing phase. Developer owns both.
     # QA only runs once at the end for final review.
