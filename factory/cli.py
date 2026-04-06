@@ -108,8 +108,18 @@ def run(repo: str, model: str | None, sequential: bool) -> None:
 
     github = GitHubClient()
     repo_obj = github.get_repo(repo)
+
+    # Filter: only real parent issues (not auto-generated sub-issues or needs-human)
+    skip_labels = {"auto-generated", "needs-human"}
     open_issues = sorted(
-        [i for i in repo_obj.get_issues(state="open") if not i.pull_request],
+        [
+            i
+            for i in repo_obj.get_issues(state="open")
+            if not i.pull_request
+            and not skip_labels.intersection(
+                {lbl.name for lbl in i.labels}
+            )
+        ],
         key=lambda i: i.number,
     )
 
