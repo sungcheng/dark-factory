@@ -113,3 +113,30 @@ def clear_state(repo_name: str, issue_number: int) -> None:
     if path.exists():
         path.unlink()
         LOG.info("Cleared state for %s#%d", repo_name, issue_number)
+
+
+def cleanup_stale_state_files(repo_name: str, active_issue: int) -> int:
+    """Remove in_progress state files for a repo except the active issue.
+
+    Called at job start to clean up leftovers from killed/crashed runs.
+    Returns the number of files removed.
+    """
+    prefix = f"{repo_name}-"
+    removed = 0
+    for path in STATE_DIR.glob(f"{prefix}*.json"):
+        try:
+            data = json.loads(path.read_text())
+            issue_num = data.get("issue_number")
+            if issue_num == active_issue:
+                continue
+            if data.get("status") == "in_progress":
+                path.unlink()
+                LOG.info(
+                    "🧹 Removed stale state file: %s#%d",
+                    repo_name,
+                    issue_num,
+                )
+                removed += 1
+        except Exception:
+            pass
+    return removed

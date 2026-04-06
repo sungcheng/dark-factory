@@ -30,6 +30,7 @@ from factory.guardrails import run_preflight_checks
 from factory.guardrails import verify_test_count_not_decreased
 from factory.security import write_security_policy
 from factory.state import JobState
+from factory.state import cleanup_stale_state_files
 from factory.state import load_state
 from factory.state import save_state
 
@@ -109,6 +110,14 @@ async def run_job(
         LOG.info(
             "🧹 Cleaned up %d orphaned issue(s) from previous runs",
             orphan_count,
+        )
+
+    # Clean up stale state files from previous failed/killed runs
+    stale_count = cleanup_stale_state_files(repo_name, issue_number)
+    if stale_count:
+        LOG.info(
+            "🧹 Removed %d stale state file(s) from previous runs",
+            stale_count,
         )
 
     tech_stack = preflight.tech_stack
