@@ -1706,16 +1706,34 @@ async def _finalize_task(
             return
 
         await _push_branch(ctx, task_branch)
-        pr = github.create_pr(
-            repo_name=repo_name,
-            branch=task_branch,
-            title=f"feat: {task.title}",
-            body=(
-                f"Part of #{issue_number}\n\n"
-                f"Task: {task.id}\n\n"
-                f"## What this does\n{task.description}"
-            ),
-        )
+        try:
+            pr = github.create_pr(
+                repo_name=repo_name,
+                branch=task_branch,
+                title=f"feat: {task.title}",
+                body=(
+                    f"Part of #{issue_number}\n\n"
+                    f"Task: {task.id}\n\n"
+                    f"## What this does\n{task.description}"
+                ),
+            )
+        except Exception as exc:
+            if "No commits between" in str(exc):
+                LOG.info(
+                    "⏭️ No diff for '%s' — skipping PR",
+                    task.title,
+                )
+                if emitter:
+                    await emitter.emit_log(
+                        task.id,
+                        f"⏭️ No diff for '{task.title}' — already on main",
+                        "success",
+                    )
+                if task.issue_number:
+                    github.close_issue(repo_name, task.issue_number)
+                save_state(state)
+                return
+            raise
         LOG.info("🚀 Opened PR #%d for %s", pr.number, task.title)
         await emitter.emit_log(
             task.id,
