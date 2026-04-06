@@ -169,7 +169,11 @@ def create_project(
             apply_template(
                 template,
                 tmp,
-                variables={"PROJECT_NAME": name},
+                variables={
+                    "PROJECT_NAME": name,
+                    "SERVICE_NAME": name,
+                    "DESCRIPTION": description or f"A {template} project",
+                },
             )
 
         # Step 4: Write CLAUDE.md

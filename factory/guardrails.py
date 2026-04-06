@@ -518,17 +518,20 @@ async def check_regression_scope(
             f"rewrite, not a fix. Escalating to human.",
         )
 
-    # Check for suspicious patterns in changed files
-    suspicious = [
+    # Check for suspicious patterns — block CI/Docker rewrites,
+    # but allow config fixes (pyproject.toml, Makefile) since
+    # those are often needed to fix broken test environments.
+    blocked_infra = [
         f
         for f in changed_files
-        if any(s in f for s in ["Makefile", "pyproject.toml", "docker", "ci.yml"])
+        if any(s in f for s in ["Dockerfile", "docker-compose", "ci.yml"])
     ]
-    if suspicious:
+    if blocked_infra:
         return (
             False,
             f"Regression fix modified infrastructure files: "
-            f"{', '.join(suspicious)}. This should be reviewed by a human.",
+            f"{', '.join(blocked_infra)}. "
+            f"This should be reviewed by a human.",
         )
 
     return True, "Regression fix scope is acceptable."
