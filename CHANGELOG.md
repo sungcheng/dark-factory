@@ -5,6 +5,22 @@ All notable changes to Dark Factory will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-05
+
+### Added
+- **Git worktree parallelism** — independent tasks and subtasks run in parallel via `git worktree`, each in its own directory. Falls back to sequential if worktree creation fails.
+- **Staff Engineer review** — after all tasks merge and pass validation, an opus agent reads the full codebase against the original issue and makes targeted code quality improvements. Auto-reverts if changes break tests.
+- **Adaptive model selection** — Architect tags tasks with complexity (`simple`/`medium`/`complex`). Developer model auto-selected: haiku for scaffolding, sonnet for standard features, opus for complex logic.
+- **Smart failure analysis** — analyzes test output for common errors (ImportError, SyntaxError, TypeError, AttributeError, FileNotFoundError) and writes targeted feedback directly, skipping QA review agent spawn for obvious fixes.
+- **Combined contracts+tests** — single QA agent writes both `contracts.md` and failing tests in one spawn, eliminating a separate haiku contracts agent per task.
+
+### Changed
+- Developer default model changed from opus to sonnet (adaptive model picks per-task based on complexity)
+- Batch processing uses worktrees for multi-task batches (true parallelism, not sequential)
+- Task finalization (push/PR/merge) extracted into `_finalize_task()` for reuse across sequential and parallel paths
+- `TaskInfo` gains `complexity` field (default: "medium")
+- Planner prompt updated with complexity tagging guidelines and examples
+
 ## [0.4.0] - 2026-04-05
 
 ### Added

@@ -42,7 +42,8 @@ Write a `tasks.json` file in the project root with this structure:
       "Makefile exists with appropriate targets",
       "CI config exists"
     ],
-    "depends_on": []
+    "depends_on": [],
+    "complexity": "simple"
   },
   {
     "id": "task-2",
@@ -52,10 +53,23 @@ Write a `tasks.json` file in the project root with this structure:
       "Testable criterion 1",
       "Testable criterion 2"
     ],
-    "depends_on": ["task-1"]
+    "depends_on": ["task-1"],
+    "complexity": "medium"
   }
 ]
 ```
+
+## Task Complexity
+
+Tag each task with a `complexity` field. This determines which AI model handles the Developer work:
+
+| Complexity | Model | Use when |
+|---|---|---|
+| `simple` | haiku | Scaffolding, config, boilerplate, single-file changes, renaming |
+| `medium` | sonnet | Standard features, CRUD endpoints, UI components, tests |
+| `complex` | opus | Multi-file architecture, complex algorithms, tricky integrations |
+
+Default is `medium` if omitted. Be honest — most tasks are `medium`. Reserve `complex` for tasks that genuinely need deeper reasoning.
 
 ## Respecting Existing Tech Stack
 

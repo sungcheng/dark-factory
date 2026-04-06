@@ -18,7 +18,8 @@ DEFAULT_MODELS: dict[str, str] = {
     "QA Engineer (Review)": "sonnet",
     "QA Engineer (Contracts)": "haiku",
     "QA Engineer (Regression)": "haiku",
-    "Developer": "opus",
+    "Developer": "sonnet",
+    "Staff Engineer": "opus",
 }
 
 # Timeout per role in seconds
@@ -29,6 +30,7 @@ DEFAULT_TIMEOUTS: dict[str, int] = {
     "QA Engineer (Review)": 600,  # 10 min
     "QA Engineer (Contracts)": 300,  # 5 min
     "QA Engineer (Regression)": 300,  # 5 min
+    "Staff Engineer": 1800,  # 30 min — reads everything
 }
 
 

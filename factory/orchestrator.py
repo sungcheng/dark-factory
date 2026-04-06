@@ -11,12 +11,12 @@ import logging
 from collections.abc import Generator
 from pathlib import Path
 
-from factory.agents.evaluator import run_evaluator_contracts
-from factory.agents.evaluator import run_evaluator_red
+from factory.agents.evaluator import run_evaluator_contracts_and_tests
 from factory.agents.evaluator import run_evaluator_regression
 from factory.agents.evaluator import run_evaluator_review
 from factory.agents.generator import run_generator
 from factory.agents.generator import run_generator_scaffold
+from factory.agents.generator import run_staff_review
 from factory.agents.planner import run_planner
 from factory.dashboard.emitter import EventEmitter
 from factory.github_client import GitHubClient
@@ -36,6 +36,13 @@ from factory.state import save_state
 LOG = logging.getLogger(__name__)
 
 MAX_ROUNDS = 5
+
+# Map task complexity → Developer model (overrides default if no --model flag)
+COMPLEXITY_MODELS: dict[str, str] = {
+    "simple": "haiku",
+    "medium": "sonnet",
+    "complex": "opus",
+}
 
 
 async def run_job(
@@ -217,121 +224,19 @@ async def run_job(
             job_tag, f"📦 Processing batch: {', '.join(batch_titles)}"
         )
 
-        for task in batch:
-            # Smart skip: check if task is already done
-            await _checkout_main(ctx)
-            await _pull_latest(ctx)
-
-            if await _is_task_already_done(
-                task,
-                ctx,
-                issue_number,
-                github,
-            ):
-                LOG.info(
-                    "⏭️ Skipping '%s' — already complete",
-                    task.title,
-                )
-                await emitter.emit_log(
-                    task.id, f"⏭️ Skipping '{task.title}' — already complete"
-                )
-                task.status = "completed"
-                if task.issue_number:
-                    github.close_issue(ctx.repo_name, task.issue_number)
-                save_state(state)
-                continue
-
-            # Create a branch from latest main
-            task_branch = f"factory/issue-{issue_number}/{task.id}"
-            await _create_branch_from(ctx, task_branch)
-
-            # Run the red-green cycle (subtasks or single task)
-            if task.has_subtasks:
-                await _process_task_with_subtasks(
-                    task,
-                    ctx,
-                    github,
-                    model,
-                    state,
-                    emitter,
-                )
-            else:
-                await _process_task(
-                    task,
-                    ctx,
-                    github,
-                    model,
-                    state,
-                    emitter,
-                )
-
-            if task.status == "completed":
-                # Pull latest main before pushing to avoid conflicts
-                await _pull_latest(ctx)
-                await _push_branch(ctx, task_branch)
-                pr = github.create_pr(
-                    repo_name=repo_name,
-                    branch=task_branch,
-                    title=f"feat: {task.title}",
-                    body=(
-                        f"Part of #{issue_number}\n\n"
-                        f"Task: {task.id}\n\n"
-                        f"## What this does\n{task.description}"
-                    ),
-                )
-                LOG.info("🚀 Opened PR #%d for %s", pr.number, task.title)
-                await emitter.emit_log(
-                    task.id,
-                    f"🚀 Opened PR #{pr.number} for {task.title}",
-                )
-
-                github.merge_pr(repo_name, pr.number)
-                LOG.info("✅ Merged PR #%d", pr.number)
-                await emitter.emit_log(
-                    task.id, f"✅ Merged PR #{pr.number}", "success"
-                )
-
-                if task.issue_number:
-                    github.close_issue(repo_name, task.issue_number)
-
-                save_state(state)
-
-            elif task.status == "failed":
-                # Push partial work, create needs-human issue
-                await _push_branch(ctx, task_branch)
-                pr = github.create_draft_pr(
-                    repo_name=repo_name,
-                    branch=task_branch,
-                    title=f"draft: {task.title}",
-                    body=(
-                        f"Part of #{issue_number}\n\n"
-                        f"Task: {task.id} — **failed after {MAX_ROUNDS} rounds**\n\n"
-                        f"## What this does\n{task.description}"
-                    ),
-                )
-                feedback = _read_feedback(ctx.working_dir)
-                failure_issue = github.create_failure_issue(
-                    repo_name=repo_name,
-                    parent_issue=issue_number,
-                    pr_number=pr.number,
-                    task=task,
-                    feedback=feedback,
-                    round_count=MAX_ROUNDS,
-                )
-                task.failure_issue = failure_issue.number
-                await emitter.emit_log(
-                    task.id,
-                    f"⚠️ Task '{task.title}' failed — draft PR #{pr.number}, "
-                    f"needs-human #{failure_issue.number}",
-                    "failure",
-                )
-                LOG.warning(
-                    "⚠️ Task '%s' failed — draft PR #%d, needs-human issue #%d",
-                    task.title,
-                    pr.number,
-                    failure_issue.number,
-                )
-                save_state(state)
+        if len(batch) > 1:
+            # Parallel batch: run independent tasks concurrently via worktrees
+            await _process_batch_with_worktrees(
+                batch, ctx, github, model, state, emitter,
+                repo_name, issue_number,
+            )
+        else:
+            # Single task — no worktree overhead
+            task = batch[0]
+            await _process_single_task_in_batch(
+                task, ctx, github, model, state, emitter,
+                repo_name, issue_number,
+            )
 
     # Step 7: Finalize
     completed = [t for t in ctx.tasks if t.status == "completed"]
@@ -381,6 +286,77 @@ async def run_job(
             model,
         )
         if validation_ok:
+            # Staff Engineer review — opus reads everything and optimizes
+            LOG.info("👨‍💻 Staff Engineer reviewing code quality...")
+            await emitter.emit_log(
+                job_tag,
+                "👨‍💻 Staff Engineer reviewing code quality (opus)...",
+            )
+            staff_result = await run_staff_review(
+                issue_title=issue.title,
+                issue_body=issue.body or "",
+                working_dir=ctx.working_dir,
+            )
+            if staff_result.success:
+                # Commit and push any improvements
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "add", "-A",
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "diff", "--cached", "--quiet",
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                if proc.returncode != 0:
+                    # There are staged changes — commit them
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "commit", "-m",
+                        "refactor: staff engineer code review improvements",
+                        cwd=ctx.working_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    await _push_changes(ctx)
+                    LOG.info("✅ Staff Engineer committed improvements")
+                    await emitter.emit_log(
+                        job_tag,
+                        "✅ Staff Engineer improvements committed",
+                        "success",
+                    )
+                    # Re-validate after staff changes
+                    still_ok, _ = await _run_tests_with_check(
+                        ctx.working_dir,
+                    )
+                    if not still_ok:
+                        LOG.warning(
+                            "⚠️ Staff Engineer broke tests — reverting"
+                        )
+                        proc = await asyncio.create_subprocess_exec(
+                            "git", "revert", "HEAD",
+                            "--no-edit",
+                            cwd=ctx.working_dir,
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await proc.communicate()
+                        await _push_changes(ctx)
+                else:
+                    LOG.info(
+                        "✅ Staff Engineer: code looks good, no changes"
+                    )
+                    await emitter.emit_log(
+                        job_tag,
+                        "✅ Staff Engineer: code is clean",
+                        "success",
+                    )
+
             await emitter.emit_job_completed(repo_name, issue_number)
             github.close_issue(repo_name, issue_number)
             state.status = "completed"
@@ -622,19 +598,16 @@ async def _process_task_with_subtasks(
     state: JobState,
     emitter: EventEmitter | None = None,
 ) -> None:
-    """Process a parent task by running its subtasks on a shared branch."""
+    """Process a parent task by running subtasks in parallel via git worktrees."""
     LOG.info("🔧 Task (with subtasks): %s", task.title)
     if emitter:
         await emitter.emit_task_started(task.id)
 
     for sub_batch in get_ready_subtask_batches(task.subtasks):
-        for subtask in sub_batch:
-            LOG.info(
-                "  🔹 Subtask: %s",
-                subtask.title,
-            )
-
-            # Wrap SubTaskInfo into TaskInfo for _process_task reuse
+        if len(sub_batch) == 1:
+            # Single subtask — no worktree overhead needed
+            subtask = sub_batch[0]
+            LOG.info("  🔹 Subtask: %s", subtask.title)
             pseudo_task = TaskInfo(
                 id=subtask.id,
                 title=subtask.title,
@@ -642,29 +615,48 @@ async def _process_task_with_subtasks(
                 acceptance_criteria=subtask.acceptance_criteria,
                 depends_on=subtask.depends_on,
             )
-
             await _process_task(
-                pseudo_task,
-                ctx,
-                github,
-                model,
-                state,
-                emitter,
+                pseudo_task, ctx, github, model, state, emitter,
             )
-
-            # Mirror status back
             subtask.status = pseudo_task.status
             save_state(state)
-
             if subtask.status == "failed":
                 task.status = "failed"
                 save_state(state)
                 LOG.error(
-                    "Subtask '%s' failed — stopping parent task '%s'",
-                    subtask.title,
-                    task.title,
+                    "Subtask '%s' failed — stopping parent '%s'",
+                    subtask.title, task.title,
                 )
                 return
+        else:
+            # Multiple independent subtasks — run in parallel via worktrees
+            LOG.info(
+                "  🌳 Running %d subtasks in parallel (worktrees)",
+                len(sub_batch),
+            )
+            if emitter:
+                names = ", ".join(s.title for s in sub_batch)
+                await emitter.emit_log(
+                    task.id,
+                    f"🌳 Parallel subtasks via worktrees: {names}",
+                )
+
+            results = await _run_subtasks_parallel(
+                sub_batch, ctx, github, model, state, emitter,
+            )
+
+            # Check results
+            for subtask, status in results:
+                subtask.status = status
+                save_state(state)
+                if status == "failed":
+                    task.status = "failed"
+                    save_state(state)
+                    LOG.error(
+                        "Subtask '%s' failed — stopping parent '%s'",
+                        subtask.title, task.title,
+                    )
+                    return
 
     # All subtasks completed
     task.status = "completed"
@@ -672,6 +664,172 @@ async def _process_task_with_subtasks(
         await emitter.emit_task_completed(task.id)
     save_state(state)
     LOG.info("✅ All subtasks complete for '%s'", task.title)
+
+
+async def _run_subtasks_parallel(
+    subtasks: list[SubTaskInfo],
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    emitter: EventEmitter | None = None,
+) -> list[tuple[SubTaskInfo, str]]:
+    """Run subtasks in parallel using git worktrees.
+
+    Each subtask gets its own worktree (separate directory, same repo).
+    After all complete, merge their changes back to the task branch.
+    """
+    import shutil
+    import tempfile
+
+    worktrees: list[tuple[SubTaskInfo, str, str]] = []  # (subtask, dir, branch)
+
+    # Create a worktree per subtask
+    for subtask in subtasks:
+        wt_dir = tempfile.mkdtemp(prefix=f"df-wt-{subtask.id}-")
+        wt_branch = f"wt-{subtask.id}"
+
+        # Create worktree from current branch
+        proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "add", "-b", wt_branch, wt_dir,
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if proc.returncode != 0:
+            LOG.warning(
+                "Failed to create worktree for %s — falling back to sequential",
+                subtask.id,
+            )
+            # Cleanup and fall back
+            shutil.rmtree(wt_dir, ignore_errors=True)
+            return await _run_subtasks_sequential(
+                subtasks, ctx, github, model, state, emitter,
+            )
+
+        # Copy CLAUDE.md security policy to worktree
+        claude_md = Path(ctx.working_dir) / "CLAUDE.md"
+        if claude_md.exists():
+            shutil.copy2(claude_md, Path(wt_dir) / "CLAUDE.md")
+
+        worktrees.append((subtask, wt_dir, wt_branch))
+        LOG.info("  🌳 Worktree for %s: %s", subtask.id, wt_dir)
+
+    # Run all subtasks in parallel
+    async def _run_one(
+        subtask: SubTaskInfo, wt_dir: str,
+    ) -> tuple[SubTaskInfo, str]:
+        LOG.info("  🔹 Subtask (parallel): %s", subtask.title)
+        pseudo_task = TaskInfo(
+            id=subtask.id,
+            title=subtask.title,
+            description=subtask.description,
+            acceptance_criteria=subtask.acceptance_criteria,
+            depends_on=subtask.depends_on,
+        )
+        # Create a temporary ctx pointing at the worktree
+        wt_ctx = JobContext(
+            repo_name=ctx.repo_name,
+            issue_number=ctx.issue_number,
+            working_dir=wt_dir,
+            branch=ctx.branch,
+            tasks=ctx.tasks,
+        )
+        await _process_task(
+            pseudo_task, wt_ctx, github, model, state, emitter,
+        )
+        return subtask, pseudo_task.status
+
+    results = await asyncio.gather(
+        *[_run_one(st, wt_dir) for st, wt_dir, _ in worktrees]
+    )
+
+    # Merge worktree changes back to main working dir
+    for subtask, wt_dir, wt_branch in worktrees:
+        matched_status = next(
+            st_s for st, st_s in results if st.id == subtask.id
+        )
+        if matched_status == "completed":
+            # Cherry-pick commits from worktree branch
+            proc = await asyncio.create_subprocess_exec(
+                "git", "merge", wt_branch, "--no-edit",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                LOG.warning(
+                    "Merge conflict from worktree %s — attempting auto-resolve",
+                    subtask.id,
+                )
+                # Try to auto-resolve by accepting theirs
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", "--abort",
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                # Fall back: apply their changes with strategy
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", wt_branch,
+                    "-X", "theirs", "--no-edit",
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+
+        # Cleanup worktree
+        proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "remove", wt_dir, "--force",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        # Delete temp branch
+        proc = await asyncio.create_subprocess_exec(
+            "git", "branch", "-D", wt_branch,
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        shutil.rmtree(wt_dir, ignore_errors=True)
+
+    return list(results)
+
+
+async def _run_subtasks_sequential(
+    subtasks: list[SubTaskInfo],
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    emitter: EventEmitter | None = None,
+) -> list[tuple[SubTaskInfo, str]]:
+    """Fallback: run subtasks sequentially (no worktrees)."""
+    results: list[tuple[SubTaskInfo, str]] = []
+    for subtask in subtasks:
+        pseudo_task = TaskInfo(
+            id=subtask.id,
+            title=subtask.title,
+            description=subtask.description,
+            acceptance_criteria=subtask.acceptance_criteria,
+            depends_on=subtask.depends_on,
+        )
+        await _process_task(
+            pseudo_task, ctx, github, model, state, emitter,
+        )
+        subtask.status = pseudo_task.status
+        save_state(state)
+        results.append((subtask, pseudo_task.status))
+        if pseudo_task.status == "failed":
+            break
+    return results
 
 
 async def _process_task(
@@ -683,45 +841,38 @@ async def _process_task(
     emitter: EventEmitter | None = None,
 ) -> None:
     """Run the full red-green cycle for a single task."""
-    LOG.info("🔧 Task: %s", task.title)
+    # Adaptive model: use complexity-based model if no explicit --model
+    effective_model = model or COMPLEXITY_MODELS.get(task.complexity, "sonnet")
+    LOG.info(
+        "🔧 Task: %s (complexity=%s, model=%s)",
+        task.title, task.complexity, effective_model,
+    )
     if emitter:
         await emitter.emit_task_started(task.id)
 
-    # Phase 0: QA writes interface contracts (haiku — fast, simple task)
-    LOG.info("  📄 QA writing contracts...")
-    if emitter:
-        await emitter.emit_log(task.id, "📄 QA writing interface contracts (haiku)")
-        await emitter.emit_agent_spawned(task.id, "QA Engineer (Contracts)")
-    await run_evaluator_contracts(
-        task_title=task.title,
-        task_description=task.description,
-        acceptance_criteria=task.acceptance_criteria,
-        working_dir=ctx.working_dir,
-        model="haiku",
-    )
-
-    # Phase 1: QA writes tests AND Developer scaffolds (parallel)
-    LOG.info("  ⚡ QA writing tests + Developer scaffolding (parallel)...")
+    # Phase 0+1: Combined contracts+tests with parallel scaffold
+    # Uses a single QA agent for contracts AND tests (saves one agent spawn)
+    LOG.info("  ⚡ QA (contracts+tests) + Developer scaffold (parallel)...")
     if emitter:
         await emitter.emit_log(
             task.id,
-            "⚡ QA tests + Developer scaffold (parallel)",
+            "⚡ QA contracts+tests + Developer scaffold (parallel)",
         )
         await emitter.emit_agent_spawned(task.id, "QA Engineer (RED)")
         await emitter.emit_agent_spawned(task.id, "Developer (scaffold)")
     await asyncio.gather(
-        run_evaluator_red(
+        run_evaluator_contracts_and_tests(
             task_title=task.title,
             task_description=task.description,
             acceptance_criteria=task.acceptance_criteria,
             working_dir=ctx.working_dir,
-            model=model,
+            model=effective_model,
         ),
         run_generator_scaffold(
             task_title=task.title,
             task_description=task.description,
             working_dir=ctx.working_dir,
-            model=model,
+            model=effective_model,
         ),
     )
 
@@ -765,7 +916,7 @@ async def _process_task(
             acceptance_criteria=task.acceptance_criteria,
             round_number=round_num,
             working_dir=ctx.working_dir,
-            model=model,
+            model=effective_model,
         )
 
         # Smart QA: run tests directly first
@@ -791,24 +942,43 @@ async def _process_task(
             save_state(state)
             return
 
-        # Tests failed — spawn QA only to write detailed feedback
-        LOG.info("    🔍 Tests failed — spawning QA for feedback...")
-        if emitter:
-            await emitter.emit_log(
-                task.id,
-                f"🔍 Tests failed round {round_num} — QA writing feedback...",
-            )
-            await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
-        await run_evaluator_review(
-            task_title=task.title,
-            round_number=round_num,
-            working_dir=ctx.working_dir,
-            model=model,
-        )
+        # Smart retry: analyze failure to provide targeted feedback
+        failure_hint = _analyze_failure(test_output)
+        if failure_hint:
+            LOG.info("    🧠 Failure analysis: %s", failure_hint[:80])
 
-        # Ensure feedback exists
+        # For obvious errors (import, syntax, missing dep), write feedback
+        # directly instead of spawning a full QA review agent
         feedback_path = Path(ctx.working_dir) / "feedback.md"
         approved_path = Path(ctx.working_dir) / "approved.md"
+
+        if failure_hint:
+            LOG.info("    📝 Writing targeted feedback (skipping QA agent)")
+            if emitter:
+                await emitter.emit_log(
+                    task.id,
+                    f"🧠 Smart feedback round {round_num}: {failure_hint[:60]}",
+                )
+            feedback_path.write_text(
+                f"# Feedback — Round {round_num}\n\n"
+                f"## Analysis\n{failure_hint}\n\n"
+                f"## Raw Output\n```\n{test_output[-1500:]}\n```\n"
+            )
+        else:
+            # Complex failure — spawn QA for detailed review
+            LOG.info("    🔍 Tests failed — spawning QA for feedback...")
+            if emitter:
+                await emitter.emit_log(
+                    task.id,
+                    f"🔍 Tests failed round {round_num} — QA reviewing...",
+                )
+                await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
+            await run_evaluator_review(
+                task_title=task.title,
+                round_number=round_num,
+                working_dir=ctx.working_dir,
+                model=effective_model,
+            )
 
         # QA might approve despite test failures (e.g., flaky tests)
         if approved_path.exists():
@@ -862,6 +1032,252 @@ async def _process_batch_parallel(
     """Process a batch of independent tasks in parallel."""
     coros = [_process_task(task, ctx, github, model, state) for task in batch]
     await asyncio.gather(*coros)
+
+
+async def _process_single_task_in_batch(
+    task: TaskInfo,
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    emitter: EventEmitter,
+    repo_name: str,
+    issue_number: int,
+) -> None:
+    """Process a single task: skip check, red-green cycle, PR, merge."""
+    await _checkout_main(ctx)
+    await _pull_latest(ctx)
+
+    if await _is_task_already_done(task, ctx, issue_number, github):
+        LOG.info("⏭️ Skipping '%s' — already complete", task.title)
+        await emitter.emit_log(
+            task.id, f"⏭️ Skipping '{task.title}' — already complete"
+        )
+        task.status = "completed"
+        if task.issue_number:
+            github.close_issue(ctx.repo_name, task.issue_number)
+        save_state(state)
+        return
+
+    task_branch = f"factory/issue-{issue_number}/{task.id}"
+    await _create_branch_from(ctx, task_branch)
+
+    if task.has_subtasks:
+        await _process_task_with_subtasks(
+            task, ctx, github, model, state, emitter,
+        )
+    else:
+        await _process_task(
+            task, ctx, github, model, state, emitter,
+        )
+
+    await _finalize_task(
+        task, ctx, github, emitter, state,
+        repo_name, issue_number, task_branch,
+    )
+
+
+async def _process_batch_with_worktrees(
+    batch: list[TaskInfo],
+    ctx: JobContext,
+    github: GitHubClient,
+    model: str | None,
+    state: JobState,
+    emitter: EventEmitter,
+    repo_name: str,
+    issue_number: int,
+) -> None:
+    """Process a batch of independent tasks in parallel via git worktrees."""
+    import shutil
+    import tempfile
+
+    LOG.info(
+        "🌳 Running %d tasks in parallel (worktrees)", len(batch),
+    )
+    await emitter.emit_log(
+        f"{repo_name}#{issue_number}",
+        f"🌳 {len(batch)} tasks in parallel via worktrees",
+    )
+
+    # First, check for already-done tasks
+    await _checkout_main(ctx)
+    await _pull_latest(ctx)
+
+    active_tasks: list[TaskInfo] = []
+    for task in batch:
+        if await _is_task_already_done(task, ctx, issue_number, github):
+            LOG.info("⏭️ Skipping '%s' — already complete", task.title)
+            task.status = "completed"
+            if task.issue_number:
+                github.close_issue(ctx.repo_name, task.issue_number)
+            save_state(state)
+        else:
+            active_tasks.append(task)
+
+    if not active_tasks:
+        return
+
+    # Create worktrees for each active task
+    worktree_info: list[tuple[TaskInfo, str, str]] = []
+    for task in active_tasks:
+        wt_dir = tempfile.mkdtemp(prefix=f"df-wt-{task.id}-")
+        task_branch = f"factory/issue-{issue_number}/{task.id}"
+
+        proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "add", "-b", task_branch, wt_dir,
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if proc.returncode != 0:
+            LOG.warning(
+                "Failed to create worktree for %s — falling back to sequential",
+                task.id,
+            )
+            shutil.rmtree(wt_dir, ignore_errors=True)
+            # Fall back to sequential
+            for t in active_tasks:
+                await _process_single_task_in_batch(
+                    t, ctx, github, model, state, emitter,
+                    repo_name, issue_number,
+                )
+            return
+
+        # Copy CLAUDE.md to worktree
+        claude_md = Path(ctx.working_dir) / "CLAUDE.md"
+        if claude_md.exists():
+            shutil.copy2(claude_md, Path(wt_dir) / "CLAUDE.md")
+
+        worktree_info.append((task, wt_dir, task_branch))
+
+    # Run all tasks in parallel
+    async def _run_task_in_worktree(
+        task: TaskInfo, wt_dir: str,
+    ) -> None:
+        wt_ctx = JobContext(
+            repo_name=ctx.repo_name,
+            issue_number=ctx.issue_number,
+            working_dir=wt_dir,
+            branch=ctx.branch,
+            tasks=ctx.tasks,
+        )
+        if task.has_subtasks:
+            await _process_task_with_subtasks(
+                task, wt_ctx, github, model, state, emitter,
+            )
+        else:
+            await _process_task(
+                task, wt_ctx, github, model, state, emitter,
+            )
+
+    await asyncio.gather(
+        *[_run_task_in_worktree(t, wt_dir) for t, wt_dir, _ in worktree_info]
+    )
+
+    # Push and merge completed tasks, cleanup worktrees
+    for task, wt_dir, task_branch in worktree_info:
+        wt_ctx = JobContext(
+            repo_name=ctx.repo_name,
+            issue_number=ctx.issue_number,
+            working_dir=wt_dir,
+            branch=task_branch,
+            tasks=ctx.tasks,
+        )
+        await _finalize_task(
+            task, wt_ctx, github, emitter, state,
+            repo_name, issue_number, task_branch,
+        )
+
+        # Remove worktree
+        proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "remove", wt_dir, "--force",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        shutil.rmtree(wt_dir, ignore_errors=True)
+
+    # Pull latest after all merges
+    await _checkout_main(ctx)
+    await _pull_latest(ctx)
+
+
+async def _finalize_task(
+    task: TaskInfo,
+    ctx: JobContext,
+    github: GitHubClient,
+    emitter: EventEmitter,
+    state: JobState,
+    repo_name: str,
+    issue_number: int,
+    task_branch: str,
+) -> None:
+    """Push, PR, and merge a completed task — or create draft PR for failures."""
+    if task.status == "completed":
+        await _push_branch(ctx, task_branch)
+        pr = github.create_pr(
+            repo_name=repo_name,
+            branch=task_branch,
+            title=f"feat: {task.title}",
+            body=(
+                f"Part of #{issue_number}\n\n"
+                f"Task: {task.id}\n\n"
+                f"## What this does\n{task.description}"
+            ),
+        )
+        LOG.info("🚀 Opened PR #%d for %s", pr.number, task.title)
+        await emitter.emit_log(
+            task.id,
+            f"🚀 Opened PR #{pr.number} for {task.title}",
+        )
+
+        github.merge_pr(repo_name, pr.number)
+        LOG.info("✅ Merged PR #%d", pr.number)
+        await emitter.emit_log(
+            task.id, f"✅ Merged PR #{pr.number}", "success"
+        )
+
+        if task.issue_number:
+            github.close_issue(repo_name, task.issue_number)
+        save_state(state)
+
+    elif task.status == "failed":
+        await _push_branch(ctx, task_branch)
+        pr = github.create_draft_pr(
+            repo_name=repo_name,
+            branch=task_branch,
+            title=f"draft: {task.title}",
+            body=(
+                f"Part of #{issue_number}\n\n"
+                f"Task: {task.id} — **failed after {MAX_ROUNDS} rounds**\n\n"
+                f"## What this does\n{task.description}"
+            ),
+        )
+        feedback = _read_feedback(ctx.working_dir)
+        failure_issue = github.create_failure_issue(
+            repo_name=repo_name,
+            parent_issue=issue_number,
+            pr_number=pr.number,
+            task=task,
+            feedback=feedback,
+            round_count=MAX_ROUNDS,
+        )
+        task.failure_issue = failure_issue.number
+        await emitter.emit_log(
+            task.id,
+            f"⚠️ Task '{task.title}' failed — draft PR #{pr.number}, "
+            f"needs-human #{failure_issue.number}",
+            "failure",
+        )
+        LOG.warning(
+            "⚠️ Task '%s' failed — draft PR #%d, needs-human issue #%d",
+            task.title,
+            pr.number,
+            failure_issue.number,
+        )
+        save_state(state)
 
 
 def _auto_cleanup_sub_issues(
@@ -932,6 +1348,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
                 acceptance_criteria=t.get("acceptance_criteria", []),
                 depends_on=t.get("depends_on", []),
                 subtasks=subtasks,
+                complexity=t.get("complexity", "medium"),
             )
         )
 
@@ -1501,6 +1918,81 @@ async def _get_changed_files(working_dir: str) -> list[str]:
     stdout2, _ = await proc2.communicate()
     files = stdout.decode().splitlines() + stdout2.decode().splitlines()
     return [f for f in files if f.strip()]
+
+
+def _analyze_failure(test_output: str) -> str | None:
+    """Analyze test failure output and return a targeted fix hint.
+
+    Returns None for complex failures that need full QA review.
+    Returns a specific hint string for obvious/mechanical failures.
+    """
+    output_lower = test_output.lower()
+
+    # Import errors — most common, easy to fix
+    if "importerror" in output_lower or "modulenotfounderror" in output_lower:
+        # Extract the module name
+        import re
+
+        match = re.search(
+            r"(?:ImportError|ModuleNotFoundError): (?:No module named |"
+            r"cannot import name )[\'\"]?([^\'\"\n]+)",
+            test_output,
+        )
+        module = match.group(1) if match else "unknown"
+        return (
+            f"Import error: module '{module}' not found. "
+            f"Check: 1) Is it installed in pyproject.toml? "
+            f"2) Is the module path correct? "
+            f"3) Is __init__.py missing?"
+        )
+
+    # Syntax errors
+    if "syntaxerror" in output_lower:
+        return (
+            "Syntax error in source code. Check for: "
+            "unclosed brackets, missing colons, invalid indentation, "
+            "or f-string issues."
+        )
+
+    # Type errors (wrong args, missing params)
+    if "typeerror" in output_lower:
+        import re
+
+        match = re.search(
+            r"TypeError: ([^\n]+)", test_output,
+        )
+        detail = match.group(1) if match else ""
+        return f"Type error: {detail}. Check function signatures match contracts.md."
+
+    # Attribute errors (wrong method/property name)
+    if "attributeerror" in output_lower:
+        import re
+
+        match = re.search(
+            r"AttributeError: ([^\n]+)", test_output,
+        )
+        detail = match.group(1) if match else ""
+        return f"Attribute error: {detail}. Check class/module API matches contracts."
+
+    # File not found
+    if "filenotfounderror" in output_lower:
+        return (
+            "File not found error. Check that all required files exist "
+            "and paths are correct."
+        )
+
+    # Lint/type check failures (not test failures)
+    if "make check" in output_lower and "error:" in output_lower:
+        if "mypy" in output_lower:
+            return (
+                "mypy type check failures. Add missing type "
+                "annotations or fix type mismatches."
+            )
+        if "ruff" in output_lower:
+            return "ruff lint failures. Run 'ruff check --fix' patterns."
+
+    # Complex failure — let QA handle it
+    return None
 
 
 def _cleanup_artifacts(working_dir: str) -> None:

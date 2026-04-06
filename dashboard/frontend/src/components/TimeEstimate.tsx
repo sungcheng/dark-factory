@@ -118,13 +118,26 @@ export function TimeEstimate({
   // Elapsed time
   const elapsed = startTime ? (now - startTime.getTime()) / 1000 : 0;
 
-  // Median time per real task (ignores skips and outliers)
+  // Median time per real task (for display only)
   const medianTaskTime =
     realDurations.length > 0 ? median(realDurations) : 0;
 
-  // Estimated remaining — monotonically decreasing (never goes up)
+  // Wall-clock throughput: elapsed / completed * remaining
+  // This captures ALL overhead (spawning, git, PRs, retries, subtasks)
+  const throughputEstimate =
+    completedCount > 0 && pendingCount > 0
+      ? (elapsed / completedCount) * pendingCount
+      : 0;
+
+  // Fall back to median-based estimate if no tasks completed yet
   let estimatedRemaining =
-    medianTaskTime > 0 ? pendingCount * medianTaskTime : 0;
+    throughputEstimate > 0
+      ? throughputEstimate
+      : medianTaskTime > 0
+        ? pendingCount * medianTaskTime
+        : 0;
+
+  // Monotonically decreasing — never goes up
   if (estimatedRemaining > 0) {
     if (
       lowestEstimate.current === null ||
@@ -165,14 +178,14 @@ export function TimeEstimate({
         </>
       )}
 
-      {/* Median per task (once we have real data) */}
-      {realDurations.length > 0 && (
+      {/* Wall-clock avg per task (includes all overhead) */}
+      {completedCount > 0 && (
         <>
           <span className="text-gray-600">|</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Median/task:</span>
+            <span className="text-gray-500">Avg/task:</span>
             <span className="text-gray-300 font-mono">
-              {formatDuration(medianTaskTime)}
+              {formatDuration(elapsed / completedCount)}
             </span>
           </div>
         </>

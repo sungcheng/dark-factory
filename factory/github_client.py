@@ -38,6 +38,7 @@ class TaskInfo:
     acceptance_criteria: list[str]
     depends_on: list[str]
     subtasks: list[SubTaskInfo] = field(default_factory=list)
+    complexity: str = "medium"  # simple, medium, complex
     issue_number: int | None = None
     status: str = "pending"
     failure_issue: int | None = None

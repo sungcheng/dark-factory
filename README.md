@@ -109,7 +109,7 @@ Override the model for all agents:
 dark-factory start --repo weather-api --issue 1 --model opus
 ```
 
-Default models: opus for Architect + Developer, sonnet for QA, haiku for contracts + regression.
+Default models: opus for Architect + Staff Engineer, sonnet for Developer + QA, haiku for regression. The Architect tags each task with complexity (simple/medium/complex) which auto-selects the Developer model (haiku/sonnet/opus).
 
 ### Verbose mode
 
@@ -145,19 +145,22 @@ make clean-state                             # clear saved state
 Each task follows this optimized pipeline:
 
 ```
-1. QA writes contracts.md (haiku — fast)
-   Defines function signatures, API routes, types
+1. QA writes contracts + tests, Developer scaffolds (parallel)
+   Single QA agent handles both contracts.md and failing tests
+   Developer reads contracts and scaffolds stubs simultaneously
 
-2. QA writes tests + Developer scaffolds (parallel)
-   Both run simultaneously via asyncio.gather
-
-3. Red-Green loop (max 5 rounds):
-   Developer codes (opus) → run make test + make check directly
+2. Red-Green loop (max 5 rounds):
+   Developer codes (model selected by task complexity)
    ├── PASS → instant approve, no QA agent needed
-   └── FAIL → spawn QA for detailed feedback → Developer retries
+   ├── OBVIOUS FAIL → smart analysis writes targeted feedback (no QA spawn)
+   └── COMPLEX FAIL → spawn QA for detailed feedback → Developer retries
 
-4. Push → open PR → merge to main
-   Each task gets its own branch and PR
+3. Push → open PR → merge to main
+   Independent tasks run in parallel via git worktrees
+
+4. Staff Engineer review (opus)
+   Reads full codebase against issue, makes targeted improvements
+   Auto-reverts if changes break tests
 ```
 
 ## Per-Task PRs
@@ -200,7 +203,7 @@ dark-factory/
 │   │   ├── base.py         # Agent runner (async subprocess spawning)
 │   │   ├── planner.py      # Architect agent
 │   │   ├── evaluator.py    # QA Engineer (contracts, red, regression, review)
-│   │   └── generator.py    # Developer agent (scaffold + implementation)
+│   │   └── generator.py    # Developer + Staff Engineer agents
 │   ├── project.py          # create-project command (repo + scaffold + CI)
 │   ├── templates/
 │   │   ├── fastapi/        # FastAPI API scaffold
@@ -252,7 +255,11 @@ The orchestrator emits events automatically when `DASHBOARD_URL` is set (default
 
 | Optimization | How |
 |---|---|
-| **Contracts first** | QA writes interface contracts before tests — Developer scaffolds in parallel |
+| **Combined contracts+tests** | Single QA agent writes contracts AND tests (saves one agent spawn per task) |
+| **Git worktree parallelism** | Independent tasks/subtasks run in parallel via `git worktree` — true concurrent development |
+| **Adaptive model selection** | Architect tags task complexity; simple→haiku, medium→sonnet, complex→opus |
+| **Smart failure analysis** | Analyzes test output (import/syntax/type errors) and writes targeted feedback — skips QA review agent for obvious fixes |
+| **Staff Engineer review** | After all tasks merge, opus reads full codebase against issue requirements and makes targeted improvements |
 | **Smart QA review** | Run `make test + make check` directly — skip QA agent if tests pass |
 | **Auto-fix test lint** | Run `ruff fix + format` on QA test files before `make check` |
 | **Self-healing regression** | If regression gate fails, spawn Developer to fix before giving up |
@@ -260,7 +267,7 @@ The orchestrator emits events automatically when `DASHBOARD_URL` is set (default
 | **Auto npm install** | Detect `package.json` in frontend dirs and install deps automatically |
 | **Skip empty regression** | No regression gate when repo has no tests yet |
 | **Haiku for simple tasks** | Contracts and regression use haiku (10x faster than sonnet) |
-| **Parallel task batches** | Independent tasks run simultaneously via asyncio.gather |
+| **Parallel task batches** | Independent tasks run simultaneously via git worktrees |
 
 ## Guardrails
 

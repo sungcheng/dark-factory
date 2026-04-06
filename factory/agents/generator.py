@@ -137,3 +137,51 @@ async def run_generator(
     )
 
     return await run_agent(config)
+
+
+async def run_staff_review(
+    issue_title: str,
+    issue_body: str,
+    working_dir: str,
+    model: str | None = None,
+) -> AgentResult:
+    """Spawn a Staff Engineer to review and optimize the completed codebase.
+
+    Runs after all tasks are merged. Reads the full codebase against
+    the original issue requirements and makes targeted improvements:
+    code quality, performance, error handling, missing edge cases.
+    """
+    prompt = (
+        "You are a **Staff Engineer** doing a final review of code that was "
+        "written by a junior developer. Your job is to:\n\n"
+        "1. **Read the original issue** (below) to understand what was requested\n"
+        "2. **Read ALL source code** in `src/` — understand the full implementation\n"
+        "3. **Read ALL tests** in `tests/` — understand test coverage\n"
+        "4. **Make targeted improvements**:\n"
+        "   - Fix any code smells, anti-patterns, or inefficiencies\n"
+        "   - Add missing error handling at system boundaries\n"
+        "   - Improve naming, structure, and readability\n"
+        "   - Remove dead code, unused imports, duplicated logic\n"
+        "   - Optimize hot paths (DB queries, API calls, loops)\n"
+        "   - Add missing type hints\n"
+        "5. **Do NOT**: rewrite working code for style preferences, "
+        "add unnecessary abstractions, or change the architecture\n"
+        "6. Run `make test` and `make check` after changes — "
+        "everything must still pass\n\n"
+        "Keep changes surgical. If the code is already good, say so and "
+        "make no changes. Don't change tests unless they have bugs.\n\n"
+        f"---\n\n"
+        f"## Original Issue\n\n"
+        f"**Title**: {issue_title}\n\n"
+        f"**Requirements**:\n{issue_body}\n"
+    )
+
+    config = AgentConfig(
+        role="Staff Engineer",
+        prompt=prompt,
+        allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        working_dir=working_dir,
+        model=model or "opus",
+    )
+
+    return await run_agent(config)

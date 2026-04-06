@@ -96,6 +96,51 @@ async def run_evaluator_contracts(
     return await run_agent(config)
 
 
+async def run_evaluator_contracts_and_tests(
+    task_title: str,
+    task_description: str,
+    acceptance_criteria: list[str],
+    working_dir: str,
+    model: str | None = None,
+) -> AgentResult:
+    """Combined contracts + tests in a single agent spawn.
+
+    For simple tasks, this eliminates a separate haiku spawn for contracts.
+    The QA Engineer writes contracts.md first, then immediately writes
+    failing tests — one agent, one context window, zero overhead.
+    """
+    system_prompt = load_prompt("evaluator")
+    criteria_text = "\n".join(f"- {c}" for c in acceptance_criteria)
+
+    prompt = (
+        f"{system_prompt}\n\n"
+        f"---\n\n"
+        f"## Your Assignment — Contracts + Failing Tests (Combined)\n\n"
+        f"### Task\n"
+        f"**Title**: {task_title}\n\n"
+        f"**Description**: {task_description}\n\n"
+        f"### Acceptance Criteria\n{criteria_text}\n\n"
+        f"---\n\n"
+        f"Do this in TWO steps:\n\n"
+        f"**Step 1: Write `contracts.md`** — define function signatures, "
+        f"API routes, types/models, and file locations. Be specific.\n\n"
+        f"**Step 2: Write failing tests** — put tests in `tests/` directory "
+        f"that cover ALL acceptance criteria. Run tests to confirm they fail "
+        f"(RED).\n\n"
+        f"Do NOT write any source code in `src/`."
+    )
+
+    config = AgentConfig(
+        role="QA Engineer (RED)",
+        prompt=prompt,
+        allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        working_dir=working_dir,
+        model=model,
+    )
+
+    return await run_agent(config)
+
+
 async def run_evaluator_regression(
     working_dir: str,
     model: str | None = None,

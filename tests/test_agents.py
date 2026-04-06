@@ -49,8 +49,8 @@ class TestDefaultModels:
         assert DEFAULT_MODELS["Architect"] == "opus"
 
     def test_developer_model(self) -> None:
-        """Developer uses opus by default."""
-        assert DEFAULT_MODELS["Developer"] == "opus"
+        """Developer uses sonnet by default (adaptive model picks per-task)."""
+        assert DEFAULT_MODELS["Developer"] == "sonnet"
 
     def test_qa_model(self) -> None:
         """QA agents use appropriate models by default."""
@@ -68,6 +68,7 @@ class TestDefaultModels:
             "QA Engineer (Contracts)",
             "QA Engineer (Regression)",
             "Developer",
+            "Staff Engineer",
         }
         assert set(DEFAULT_MODELS.keys()) == expected_roles
 
