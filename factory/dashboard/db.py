@@ -65,10 +65,23 @@ async def upsert_job(
 
     Called by the orchestrator (via emitter) to persist job state
     into the database so historical jobs survive state file cleanup.
+    When a new job starts, any other in_progress jobs for the same
+    repo are marked as 'abandoned' so the dashboard stays clean.
     """
     now = datetime.now(UTC).isoformat()
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(_CREATE_JOBS_SQL)
+
+        # Mark stale in-progress jobs for this repo as abandoned
+        if status == "in_progress":
+            await conn.execute(
+                """\
+                UPDATE jobs SET status = 'abandoned', updated_at = ?
+                WHERE repo_name = ? AND job_id != ? AND status = 'in_progress'
+                """,
+                (now, repo_name, job_id),
+            )
+
         await conn.execute(
             """\
             INSERT INTO jobs (
@@ -99,12 +112,15 @@ async def upsert_job(
 
 
 async def fetch_all_jobs() -> list[dict[str, object]]:
-    """Fetch all jobs from the database, most recent first."""
+    """Fetch active jobs from the database, most recent first.
+
+    Excludes abandoned jobs so the dashboard only shows relevant work.
+    """
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(_CREATE_JOBS_SQL)
         conn.row_factory = aiosqlite.Row
         async with conn.execute(
-            "SELECT * FROM jobs ORDER BY updated_at DESC"
+            "SELECT * FROM jobs WHERE status != 'abandoned' ORDER BY updated_at DESC"
         ) as cursor:
             rows = await cursor.fetchall()
 
