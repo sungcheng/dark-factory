@@ -54,18 +54,14 @@ class TestDefaultModels:
 
     def test_qa_model(self) -> None:
         """QA agents use appropriate models by default."""
-        assert DEFAULT_MODELS["QA Engineer (RED)"] == "sonnet"
         assert DEFAULT_MODELS["QA Engineer (Review)"] == "sonnet"
-        assert DEFAULT_MODELS["QA Engineer (Contracts)"] == "haiku"
         assert DEFAULT_MODELS["QA Engineer (Regression)"] == "haiku"
 
     def test_all_roles_have_defaults(self) -> None:
         """All agent roles have default models."""
         expected_roles = {
             "Architect",
-            "QA Engineer (RED)",
             "QA Engineer (Review)",
-            "QA Engineer (Contracts)",
             "QA Engineer (Regression)",
             "Developer",
             "QA Lead",

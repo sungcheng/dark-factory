@@ -14,9 +14,7 @@ LOG = logging.getLogger(__name__)
 # Default model assignments per role (cheap for coordination, powerful for coding)
 DEFAULT_MODELS: dict[str, str] = {
     "Architect": "opus",
-    "QA Engineer (RED)": "sonnet",
     "QA Engineer (Review)": "sonnet",
-    "QA Engineer (Contracts)": "haiku",
     "QA Engineer (Regression)": "haiku",
     "Developer": "sonnet",
     "QA Lead": "opus",
@@ -26,9 +24,7 @@ DEFAULT_MODELS: dict[str, str] = {
 DEFAULT_TIMEOUTS: dict[str, int] = {
     "Architect": 1200,  # 20 min
     "Developer": 1800,  # 30 min — heaviest work
-    "QA Engineer (RED)": 1200,  # 20 min
     "QA Engineer (Review)": 600,  # 10 min
-    "QA Engineer (Contracts)": 300,  # 5 min
     "QA Engineer (Regression)": 300,  # 5 min
     "QA Lead": 1800,  # 30 min — reads everything
 }

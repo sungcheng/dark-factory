@@ -8,6 +8,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import re
+import shutil
+import socket
+import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
@@ -234,9 +239,7 @@ async def run_job(
         )
 
         # Persist task info to dashboard DB
-        import json as _json
-
-        tasks_data = _json.dumps(
+        tasks_data = json.dumps(
             [{"id": t.id, "title": t.title, "status": t.status} for t in ctx.tasks]
         )
         await emitter.update_job_tasks(
@@ -811,9 +814,6 @@ async def _run_subtasks_parallel(
     Each subtask gets its own worktree (separate directory, same repo).
     After all complete, merge their changes back to the task branch.
     """
-    import shutil
-    import tempfile
-
     worktrees: list[tuple[SubTaskInfo, str, str]] = []  # (subtask, dir, branch)
 
     # Create a worktree per subtask
@@ -1346,9 +1346,6 @@ async def _process_batch_with_worktrees(
     issue_number: int,
 ) -> None:
     """Process a batch of independent tasks in parallel via git worktrees."""
-    import shutil
-    import tempfile
-
     LOG.info(
         "🌳 Running %d tasks in parallel (worktrees)",
         len(batch),
@@ -2251,8 +2248,6 @@ async def _install_frontend_deps(working_dir: str) -> None:
     Searches common frontend locations. Skips if npm is not
     installed or if node_modules already exists.
     """
-    import shutil
-
     if not shutil.which("npm"):
         return
 
@@ -2290,8 +2285,6 @@ async def _install_frontend_deps(working_dir: str) -> None:
 
 async def _clone_repo(github: GitHubClient, ctx: JobContext) -> str:
     """Clone the target repo into a temp directory."""
-    import tempfile
-
     work_dir = tempfile.mkdtemp(prefix="dark-factory-")
     clone_url = f"https://{github.token}@github.com/{github.owner}/{ctx.repo_name}.git"
 
@@ -2521,8 +2514,6 @@ def _analyze_failure(test_output: str) -> str | None:
     # Import errors — most common, easy to fix
     if "importerror" in output_lower or "modulenotfounderror" in output_lower:
         # Extract the module name
-        import re
-
         match = re.search(
             r"(?:ImportError|ModuleNotFoundError): (?:No module named |"
             r"cannot import name )[\'\"]?([^\'\"\n]+)",
@@ -2546,8 +2537,6 @@ def _analyze_failure(test_output: str) -> str | None:
 
     # Type errors (wrong args, missing params)
     if "typeerror" in output_lower:
-        import re
-
         match = re.search(
             r"TypeError: ([^\n]+)",
             test_output,
@@ -2557,8 +2546,6 @@ def _analyze_failure(test_output: str) -> str | None:
 
     # Attribute errors (wrong method/property name)
     if "attributeerror" in output_lower:
-        import re
-
         match = re.search(
             r"AttributeError: ([^\n]+)",
             test_output,
@@ -2615,9 +2602,6 @@ async def _ensure_dashboard_running() -> None:
     If not, starts uvicorn in the background. The dashboard
     stays running after the factory finishes.
     """
-    import os
-    import socket
-
     port = int(os.environ.get("DASHBOARD_PORT", "8420"))
     dashboard_url = os.environ.get("DASHBOARD_URL", "")
 
