@@ -10,6 +10,7 @@ from factory.skills.cleanup import Cleanup
 
 # Auto-register all built-in skills on import
 from factory.skills.codebase_profile import CodebaseProfile
+from factory.skills.context_validator import ContextValidator
 from factory.skills.dead_code_sweep import DeadCodeSweep
 from factory.skills.debug_bisect import DebugBisect
 from factory.skills.dependency_audit import DependencyAudit
@@ -31,6 +32,7 @@ for _skill_cls in [
     StandardsBootstrap,
     DependencyAudit,
     CodebaseProfile,
+    ContextValidator,
     MigrationChain,
     Scaffold,
     DebugBisect,

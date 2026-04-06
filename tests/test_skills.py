@@ -8,11 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from factory.agents.base import AgentCost
+from factory.agents.base import AgentResult
+from factory.agents.base import _parse_cost
 from factory.skills.base import Skill
 from factory.skills.base import SkillContext
 from factory.skills.base import SkillPhase
 from factory.skills.base import SkillResult
 from factory.skills.codebase_profile import CodebaseProfile
+from factory.skills.context_validator import ContextValidator
+from factory.skills.context_validator import _extract_claimed_names
+from factory.skills.context_validator import _extract_real_names
 from factory.skills.dead_code_sweep import _find_orphaned_tests
 from factory.skills.debug_bisect import DebugBisect
 from factory.skills.migration_chain import MigrationChain
@@ -63,6 +69,7 @@ class TestSkillRegistry:
             "standards_bootstrap",
             "dependency_audit",
             "codebase_profile",
+            "context_validator",
             "migration_chain",
             "scaffold",
             "debug_bisect",
@@ -93,11 +100,12 @@ class TestSkillRegistry:
 
     def test_list_skills_by_phase(self) -> None:
         pre_job = list_skills(SkillPhase.PRE_JOB)
-        assert len(pre_job) == 3
+        assert len(pre_job) == 4
         assert {s.name for s in pre_job} == {
             "standards_bootstrap",
             "dependency_audit",
             "codebase_profile",
+            "context_validator",
         }
 
         per_task = list_skills(SkillPhase.PER_TASK)
@@ -282,3 +290,114 @@ class TestCodebaseProfile:
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "ARCHITECTURE.md").write_text("# Arch")
             assert _run(skill.should_run(SkillContext(working_dir=tmpdir))) is False
+
+
+class TestContextValidator:
+    """Tests for context validation skill."""
+
+    def test_extract_claimed_names(self) -> None:
+        text = (
+            "This module exports `fetch_weather()` and `WeatherService`.\n"
+            "Config is in `config.py`. Uses `API_KEY` constant.\n"
+            "Returns `WeatherResponse` objects."
+        )
+        names = _extract_claimed_names(text)
+        assert "fetch_weather" in names
+        assert "WeatherService" in names
+        assert "WeatherResponse" in names
+        # Should skip: config.py (filename), API_KEY (all caps)
+        assert "config" not in names
+        assert "API_KEY" not in names
+
+    def test_extract_real_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wd = Path(tmpdir)
+            (wd / "service.py").write_text(
+                "class WeatherService:\n"
+                "    async def fetch_weather(self, city: str) -> dict:\n"
+                "        pass\n"
+                "\n"
+                "API_URL = 'https://api.example.com'\n"
+            )
+            names = _extract_real_names(wd)
+            assert "WeatherService" in names
+            assert "fetch_weather" in names
+            assert "API_URL" in names
+
+    def test_detects_stale_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wd = Path(tmpdir)
+            (wd / "app.py").write_text("def get_weather(): pass\n")
+            (wd / "CONTEXT.md").write_text(
+                "Exports `get_weather()` and `fetch_forecast()`.\n"
+            )
+            skill = ContextValidator()
+            ctx = SkillContext(working_dir=tmpdir)
+            result = _run(skill.run(ctx))
+            assert result.success
+            assert "1 stale" in result.message
+            assert result.data["mismatches"]
+            assert any("fetch_forecast" in m for m in result.data["mismatches"])
+
+    def test_passes_when_all_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wd = Path(tmpdir)
+            (wd / "app.py").write_text(
+                "def get_weather(): pass\nclass WeatherService: pass\n"
+            )
+            (wd / "CONTEXT.md").write_text(
+                "Exports `get_weather()` and `WeatherService`.\n"
+            )
+            skill = ContextValidator()
+            ctx = SkillContext(working_dir=tmpdir)
+            result = _run(skill.run(ctx))
+            assert result.success
+            assert "match" in result.message
+
+    def test_should_not_run_without_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            skill = ContextValidator()
+            ctx = SkillContext(working_dir=tmpdir)
+            assert _run(skill.should_run(ctx)) is False
+
+
+class TestCostTracking:
+    """Tests for agent cost parsing."""
+
+    def test_parse_cost_from_json(self) -> None:
+        stdout = (
+            '{"result":"done","cost_usd":0.0523,'
+            '"duration_ms":12345,"num_turns":3,'
+            '"usage":{"input_tokens":1500,"output_tokens":500,'
+            '"cache_read_input_tokens":200,'
+            '"cache_creation_input_tokens":0}}'
+        )
+        cost = _parse_cost(stdout)
+        assert cost.cost_usd == pytest.approx(0.0523)
+        assert cost.input_tokens == 1500
+        assert cost.output_tokens == 500
+        assert cost.cache_read_tokens == 200
+        assert cost.total_tokens == 2000
+        assert cost.duration_ms == 12345
+        assert cost.num_turns == 3
+
+    def test_parse_cost_invalid_json(self) -> None:
+        cost = _parse_cost("not json at all")
+        assert cost.cost_usd == 0.0
+        assert cost.total_tokens == 0
+
+    def test_parse_cost_empty(self) -> None:
+        cost = _parse_cost("")
+        assert cost.cost_usd == 0.0
+
+    def test_agent_result_has_cost(self) -> None:
+        result = AgentResult(exit_code=0, stdout="ok", stderr="")
+        assert result.cost.cost_usd == 0.0
+        assert result.cost.total_tokens == 0
+
+    def test_agent_cost_defaults(self) -> None:
+        cost = AgentCost()
+        assert cost.input_tokens == 0
+        assert cost.output_tokens == 0
+        assert cost.cost_usd == 0.0
+        assert cost.total_tokens == 0

@@ -482,7 +482,8 @@ async def run_job(
                 job_tag,
                 f"📊 Health: {health['grade']} — "
                 f"avg {health['avg_rounds']:.1f} rounds/task, "
-                f"{health['max_round_tasks']} task(s) hit max rounds",
+                f"${health['total_cost_usd']:.4f}, "
+                f"{health['total_tokens']:,} tokens",
                 str(health["status"]),
             )
 
@@ -1108,7 +1109,7 @@ async def _process_task(
                 f"🔄 Round {round_num}/{MAX_ROUNDS} — Developer coding...",
             )
             await emitter.emit_agent_spawned(task.id, "Developer")
-        await run_generator(
+        gen_result = await run_generator(
             task_title=task.title,
             task_description=task.description,
             acceptance_criteria=task.acceptance_criteria,
@@ -1116,6 +1117,8 @@ async def _process_task(
             working_dir=ctx.working_dir,
             model=effective_model,
         )
+        task.cost_usd += gen_result.cost.cost_usd
+        task.total_tokens += gen_result.cost.total_tokens
 
         # Run tests
         passed, test_output = await _run_tests_with_check(ctx.working_dir)
@@ -1166,12 +1169,14 @@ async def _process_task(
             feedback_path = Path(ctx.working_dir) / "feedback.md"
             _cleanup_artifacts(ctx.working_dir)
 
-            await run_evaluator_review(
+            qa_result = await run_evaluator_review(
                 task_title=task.title,
                 round_number=round_num,
                 working_dir=ctx.working_dir,
                 model=effective_model,
             )
+            task.cost_usd += qa_result.cost.cost_usd
+            task.total_tokens += qa_result.cost.total_tokens
 
             if approved_path.exists():
                 LOG.info(
@@ -1843,6 +1848,10 @@ def _compute_health_report(
     if grade == "F":
         status = "failure"
 
+    # Cost tracking
+    total_cost = sum(t.cost_usd for t in tasks)
+    total_tokens = sum(t.total_tokens for t in tasks)
+
     lines = [
         f"Job: {job_tag}",
         f"Grade: {grade}",
@@ -1850,6 +1859,8 @@ def _compute_health_report(
         f"Avg rounds/task: {avg_rounds:.1f}",
         f"Tasks hitting max rounds: {max_round_tasks}",
         f"Tasks needing 3+ rounds: {struggled}",
+        f"Total cost: ${total_cost:.4f}",
+        f"Total tokens: {total_tokens:,}",
     ]
 
     if grade in ("C", "F"):
@@ -1858,15 +1869,20 @@ def _compute_health_report(
             "better CONTEXT.md files, or simpler codebase structure."
         )
 
-    for t in completed:
+    for t in tasks:
+        cost_str = f"${t.cost_usd:.4f}" if t.cost_usd else ""
         if t.rounds_used >= 3:
-            lines.append(f"  ⚠️  {t.id} ({t.title}): {t.rounds_used} rounds")
+            lines.append(f"  ⚠️  {t.id} ({t.title}): {t.rounds_used} rounds {cost_str}")
+        elif t.cost_usd > 0:
+            lines.append(f"  {t.id} ({t.title}): {t.rounds_used} round(s) {cost_str}")
 
     return {
         "grade": grade,
         "avg_rounds": avg_rounds,
         "max_round_tasks": max_round_tasks,
         "struggled": struggled,
+        "total_cost_usd": total_cost,
+        "total_tokens": total_tokens,
         "status": status,
         "summary": "\n".join(lines),
     }

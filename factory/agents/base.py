@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import signal
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
@@ -31,12 +33,30 @@ DEFAULT_TIMEOUTS: dict[str, int] = {
 
 
 @dataclass
+class AgentCost:
+    """Token usage and cost from a single agent spawn."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float = 0.0
+    duration_ms: int = 0
+    num_turns: int = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
+@dataclass
 class AgentResult:
     """Result from a Claude Code subprocess."""
 
     exit_code: int
     stdout: str
     stderr: str
+    cost: AgentCost = field(default_factory=AgentCost)
 
     @property
     def success(self) -> bool:
@@ -83,9 +103,6 @@ async def run_agent(config: AgentConfig) -> AgentResult:
         cmd.extend(["--allowedTools", ",".join(config.allowed_tools)])
 
     LOG.info("  🤖 Spawning %s (model=%s)", config.role, model)
-
-    import os
-    import signal
 
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -145,11 +162,42 @@ async def run_agent(config: AgentConfig) -> AgentResult:
         except (json.JSONDecodeError, TypeError):
             LOG.warning("  ⚠️ %s — raw output: %s", config.role, stdout_str[:300])
 
+    # Parse cost from JSON output
+    cost = _parse_cost(stdout_str)
+    if cost.cost_usd > 0:
+        LOG.info(
+            "  💰 %s: $%.4f (%d in / %d out tokens, %d turns)",
+            config.role,
+            cost.cost_usd,
+            cost.input_tokens,
+            cost.output_tokens,
+            cost.num_turns,
+        )
+
     return AgentResult(
         exit_code=exit_code,
         stdout=stdout_str,
         stderr="",
+        cost=cost,
     )
+
+
+def _parse_cost(stdout: str) -> AgentCost:
+    """Extract cost info from Claude CLI JSON output."""
+    try:
+        data = json.loads(stdout)
+        usage = data.get("usage", {})
+        return AgentCost(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+            cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+            cost_usd=data.get("cost_usd", 0.0) or 0.0,
+            duration_ms=data.get("duration_ms", 0) or 0,
+            num_turns=data.get("num_turns", 0) or 0,
+        )
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        return AgentCost()
 
 
 def parse_agent_output(result: AgentResult) -> dict[str, object]:
