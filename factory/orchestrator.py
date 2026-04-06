@@ -1306,6 +1306,60 @@ async def _finalize_task(
 ) -> None:
     """Push, PR, and merge a completed task — or create draft PR for failures."""
     if task.status == "completed":
+        # Rebase onto latest main before pushing (other tasks may have merged)
+        proc = await asyncio.create_subprocess_exec(
+            "git", "fetch", "origin", "main",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rebase", "origin/main",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if proc.returncode != 0:
+            # Rebase failed — reset and cherry-pick
+            await asyncio.create_subprocess_exec(
+                "git", "rebase", "--abort",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            proc = await asyncio.create_subprocess_exec(
+                "git", "log", "origin/main..HEAD",
+                "--format=%H", "--reverse",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            commits = stdout.decode().strip().splitlines()
+            await asyncio.create_subprocess_exec(
+                "git", "reset", "--hard", "origin/main",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            for commit_hash in commits:
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "cherry-pick", commit_hash,
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                if proc.returncode != 0:
+                    await asyncio.create_subprocess_exec(
+                        "git", "cherry-pick", "--abort",
+                        cwd=ctx.working_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+
         await _push_branch(ctx, task_branch)
         pr = github.create_pr(
             repo_name=repo_name,
