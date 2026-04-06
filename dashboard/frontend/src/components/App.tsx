@@ -114,7 +114,12 @@ export function App(): React.ReactElement {
       return;
     }
 
-    const repoJobs = jobs.filter((j) => j.repo_name === selectedRepo);
+    // Only fetch data for active (in_progress) jobs — completed/failed are historical
+    const activeJobs = jobs.filter(
+      (j) => j.repo_name === selectedRepo && j.status === "in_progress",
+    );
+    // Fall back to all repo jobs if nothing is active (viewing history)
+    const repoJobs = activeJobs.length > 0 ? activeJobs : jobs.filter((j) => j.repo_name === selectedRepo);
     if (repoJobs.length === 0) return;
 
     const taskResults: TaskWithParent[] = [];
