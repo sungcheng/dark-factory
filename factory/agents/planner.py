@@ -41,6 +41,10 @@ async def run_planner(
         f"**Title**: {issue_title}\n\n"
         f"**Description**:\n{issue_body}\n\n"
         f"---\n\n"
+        f"**IMPORTANT**: Before creating tasks, audit the existing codebase. "
+        f"Read the project structure, source files, tests, and config. "
+        f"Do NOT create tasks for features, scaffolding, or infrastructure "
+        f"that already exists in the repo. Only create tasks for NEW work.\n\n"
         f"Now break this issue into tasks. Write `tasks.json` in the project root. "
         f"Make sure each task has clear, testable acceptance criteria."
     )

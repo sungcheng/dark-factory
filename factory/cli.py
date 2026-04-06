@@ -91,17 +91,17 @@ def retry(repo: str, issue: int, model: str | None) -> None:
     help="Override model for all agents",
 )
 @click.option(
-    "--parallel",
-    "-p",
+    "--sequential",
+    "-s",
     is_flag=True,
-    help="Process issues in parallel (use when issues are independent)",
+    help="Process issues one at a time (default is parallel)",
 )
-def run(repo: str, model: str | None, parallel: bool) -> None:
-    """Process all open issues in a repo (sequential by default).
+def run(repo: str, model: str | None, sequential: bool) -> None:
+    """Process all open issues in a repo (parallel by default).
 
     Examples:
         dark-factory run --repo weather-api
-        dark-factory run --repo weather-api --parallel
+        dark-factory run --repo weather-api --sequential
     """
     from factory.github_client import GitHubClient
     from factory.orchestrator import run_job
@@ -117,6 +117,7 @@ def run(repo: str, model: str | None, parallel: bool) -> None:
         click.echo(f"No open issues in {repo}")
         return
 
+    parallel = not sequential
     mode = "in parallel" if parallel else "sequentially"
     click.echo(f"Found {len(open_issues)} open issue(s) in {repo} — processing {mode}:")
     for issue in open_issues:

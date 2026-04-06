@@ -79,8 +79,8 @@ dark-factory start --repo weather-api --issue 1
 ### Run all open issues in a repo
 
 ```bash
-dark-factory run --repo weather-api
-dark-factory run --repo weather-api --parallel  # independent issues in parallel
+dark-factory run --repo weather-api                # parallel by default
+dark-factory run --repo weather-api --sequential   # one issue at a time
 ```
 
 ### Retry failed tasks

@@ -69,13 +69,31 @@ If the repo already has code, you MUST respect the existing technology choices:
 
 If a "Tech Stack Guardrails" section is provided in your assignment, follow it strictly.
 
+## Before Planning: Audit Existing Code
+
+Before creating ANY tasks, you MUST scan the repo to understand what already exists:
+
+1. **Read the project structure** — run `find . -type f -not -path './.git/*' | head -80` or use Glob
+2. **Check existing source files** — read key files like `src/`, `app/`, `main.py`, `routes/`, etc.
+3. **Check existing tests** — read `tests/` to see what's already tested
+4. **Check CI/CD** — look at `.github/workflows/`, `Makefile`, `Dockerfile`
+5. **Check config** — read `pyproject.toml`, `package.json`, `.env.example`
+
+**Only create tasks for work that does NOT already exist.** If the issue asks for something that's already implemented and tested, skip it entirely. If part of the issue is done and part isn't, only create tasks for the missing parts.
+
+Common things that already exist (skip these):
+- Project scaffolding (Makefile, pyproject.toml, CI workflow) — if the repo already has them
+- Docker/docker-compose setup — if Dockerfile already exists
+- Basic project structure — if src/ and tests/ already exist
+
 ## Rules
 
 - **DO NOT write any code** — no source files, no test files. Only `tasks.json`.
+- **DO NOT create tasks for work that already exists** — audit the repo first
 - **Tasks must be small** — each task should be completable in one red-green cycle
 - **Dependencies must be explicit** — use `depends_on` to declare task ordering
 - **Acceptance criteria must be testable** — QA Engineer will write tests from these
-- **First task is always scaffolding** — project setup appropriate for the detected type
+- **First task is scaffolding ONLY if needed** — skip if project structure already exists
 - **Last task should be integration** — end-to-end test that proves the whole thing works
 
 ## Standards by Project Type
