@@ -400,6 +400,37 @@ def cleanup(repo: str, dry_run: bool) -> None:
 
     click.echo(f"  {orphan_count} orphaned issue(s) {'found' if dry_run else 'closed'}")
 
+    # 1b. Close stale PRs from factory branches whose parent issue is closed
+    click.echo("\nScanning for stale PRs...")
+    if dry_run:
+        repo_obj = github.get_repo(repo)
+        pr_count = 0
+        for pr in repo_obj.get_pulls(state="open"):
+            branch = pr.head.ref
+            if not branch.startswith("factory/"):
+                continue
+            parts = branch.split("/")
+            if len(parts) < 2:
+                continue
+            try:
+                parent_num = int(parts[1].replace("issue-", ""))
+            except ValueError:
+                continue
+            try:
+                parent = repo_obj.get_issue(parent_num)
+                if parent.state == "closed":
+                    pr_count += 1
+                    click.echo(
+                        f"  Would close PR #{pr.number}: "
+                        f"{pr.title} (parent #{parent_num} closed)"
+                    )
+            except Exception:
+                pass
+    else:
+        pr_count = github.cleanup_stale_prs(repo)
+
+    click.echo(f"  {pr_count} stale PR(s) {'found' if dry_run else 'closed'}")
+
     # 2. Clean up completed state files
     click.echo("\nScanning state files...")
     state_files = sorted(STATE_DIR.glob(f"{prefix}*.json"))

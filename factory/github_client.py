@@ -226,6 +226,49 @@ class GitHubClient:
                     pass
         return None
 
+    def cleanup_stale_prs(self, repo_name: str) -> int:
+        """Close open PRs from dark-factory branches whose parent issue is closed.
+
+        Returns the number of PRs closed.
+        """
+        repo = self.get_repo(repo_name)
+        closed_count = 0
+        seen_parents: dict[int, bool] = {}
+
+        for pr in repo.get_pulls(state="open"):
+            # Only close PRs on factory branches
+            branch = pr.head.ref
+            if not branch.startswith("factory/"):
+                continue
+
+            # Extract parent issue from branch name (factory/issue-N/...)
+            parts = branch.split("/")
+            if len(parts) < 2:
+                continue
+            try:
+                parent_num = int(parts[1].replace("issue-", ""))
+            except ValueError:
+                continue
+
+            if parent_num not in seen_parents:
+                try:
+                    parent = repo.get_issue(parent_num)
+                    seen_parents[parent_num] = parent.state == "closed"
+                except Exception:
+                    seen_parents[parent_num] = False
+
+            if seen_parents[parent_num]:
+                pr.edit(state="closed")
+                LOG.info(
+                    "🧹 Closed stale PR #%d: %s (parent #%d closed)",
+                    pr.number,
+                    pr.title,
+                    parent_num,
+                )
+                closed_count += 1
+
+        return closed_count
+
     def protect_main_branch(self, repo_name: str) -> None:
         """Enable branch protection on main.
 

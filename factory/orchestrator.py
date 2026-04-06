@@ -121,6 +121,14 @@ async def run_job(
             stale_count,
         )
 
+    # Clean up stale PRs from previous failed/killed runs
+    pr_count = github.cleanup_stale_prs(repo_name)
+    if pr_count:
+        LOG.info(
+            "🧹 Closed %d stale PR(s) from previous runs",
+            pr_count,
+        )
+
     tech_stack = preflight.tech_stack
     LOG.info("🔍 Tech stack: %s", tech_stack.summary())
     await emitter.emit_log(job_tag, f"🔍 Tech stack: {tech_stack.summary()}")
