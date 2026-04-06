@@ -11,11 +11,9 @@ import logging
 from collections.abc import Generator
 from pathlib import Path
 
-from factory.agents.evaluator import run_evaluator_contracts_and_tests
 from factory.agents.evaluator import run_evaluator_regression
 from factory.agents.evaluator import run_evaluator_review
 from factory.agents.generator import run_generator
-from factory.agents.generator import run_generator_scaffold
 from factory.agents.generator import run_staff_review
 from factory.agents.planner import run_planner
 from factory.dashboard.emitter import EventEmitter
@@ -973,54 +971,9 @@ async def _process_task(
     if emitter:
         await emitter.emit_task_started(task.id)
 
-    # Phase 0+1: Combined contracts+tests with parallel scaffold
-    # Uses a single QA agent for contracts AND tests (saves one agent spawn)
-    LOG.info("  ⚡ QA (contracts+tests) + Developer scaffold (parallel)...")
-    if emitter:
-        await emitter.emit_log(
-            task.id,
-            "⚡ QA contracts+tests + Developer scaffold (parallel)",
-        )
-        await emitter.emit_agent_spawned(task.id, "QA Engineer (RED)")
-        await emitter.emit_agent_spawned(task.id, "Developer (scaffold)")
-    await asyncio.gather(
-        run_evaluator_contracts_and_tests(
-            task_title=task.title,
-            task_description=task.description,
-            acceptance_criteria=task.acceptance_criteria,
-            working_dir=ctx.working_dir,
-            model=effective_model,
-        ),
-        run_generator_scaffold(
-            task_title=task.title,
-            task_description=task.description,
-            working_dir=ctx.working_dir,
-            model=effective_model,
-        ),
-    )
-
-    # Pre-check: does the code already satisfy the tests?
-    # If someone already implemented this feature (or a previous run
-    # was canceled after merging), skip the Developer entirely.
-    pre_passed, _ = await _run_tests_with_check(ctx.working_dir)
-    if pre_passed:
-        LOG.info("  ⏭️ Tests already pass — feature exists, skipping Developer")
-        if emitter:
-            await emitter.emit_log(
-                task.id,
-                "⏭️ Tests already pass — skipping Developer",
-                "success",
-            )
-            await emitter.emit_round_result(task.id, 0, passed=True)
-            await emitter.emit_task_completed(task.id)
-        task.status = "completed"
-        await _commit_task(ctx, task)
-        if task.issue_number:
-            github.close_issue(ctx.repo_name, task.issue_number)
-        save_state(state)
-        return
-
-    # Phase 2-3: Red-Green loop with smart QA
+    # Developer builds feature: code + tests + make it pass
+    # No separate QA test-writing phase. Developer owns both.
+    # QA only runs once at the end for final review.
     for round_num in range(1, MAX_ROUNDS + 1):
         LOG.info("  🔄 Round %d/%d", round_num, MAX_ROUNDS)
         _cleanup_artifacts(ctx.working_dir)
@@ -1042,61 +995,26 @@ async def _process_task(
             model=effective_model,
         )
 
-        # Smart QA: run tests directly first
+        # Run tests
         passed, test_output = await _run_tests_with_check(ctx.working_dir)
 
         if passed:
-            # Tests pass — quick approve, no need to spawn QA agent
-            LOG.info("  ✅ GREEN — all tests pass on round %d", round_num)
-            if emitter:
-                await emitter.emit_log(
-                    task.id,
-                    f"✅ GREEN — all tests pass on round {round_num}",
-                    "success",
-                )
-            if emitter:
-                await emitter.emit_round_result(task.id, round_num, passed=True)
-                await emitter.emit_task_completed(task.id)
-                await emitter.emit_agent_exited(task.id, "Developer", success=True)
-            task.status = "completed"
-            task.rounds_used = round_num
-            await _commit_task(ctx, task)
-            if task.issue_number:
-                github.close_issue(ctx.repo_name, task.issue_number)
-            save_state(state)
-            return
-
-        # Smart retry: analyze failure to provide targeted feedback
-        failure_hint = _analyze_failure(test_output)
-        if failure_hint:
-            LOG.info("    🧠 Failure analysis: %s", failure_hint[:80])
-
-        # For obvious errors (import, syntax, missing dep), write feedback
-        # directly instead of spawning a full QA review agent
-        feedback_path = Path(ctx.working_dir) / "feedback.md"
-        approved_path = Path(ctx.working_dir) / "approved.md"
-
-        if failure_hint:
-            LOG.info("    📝 Writing targeted feedback (skipping QA agent)")
-            if emitter:
-                await emitter.emit_log(
-                    task.id,
-                    f"🧠 Smart feedback round {round_num}: {failure_hint[:60]}",
-                )
-            feedback_path.write_text(
-                f"# Feedback — Round {round_num}\n\n"
-                f"## Analysis\n{failure_hint}\n\n"
-                f"## Raw Output\n```\n{test_output[-1500:]}\n```\n"
+            LOG.info(
+                "  ✅ Tests pass on round %d — QA final review...",
+                round_num,
             )
-        else:
-            # Complex failure — spawn QA for detailed review
-            LOG.info("    🔍 Tests failed — spawning QA for feedback...")
             if emitter:
                 await emitter.emit_log(
                     task.id,
-                    f"🔍 Tests failed round {round_num} — QA reviewing...",
+                    f"✅ Tests pass on round {round_num} — QA reviewing...",
                 )
                 await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
+
+            # QA final review: verify tests cover the spec
+            approved_path = Path(ctx.working_dir) / "approved.md"
+            feedback_path = Path(ctx.working_dir) / "feedback.md"
+            _cleanup_artifacts(ctx.working_dir)
+
             await run_evaluator_review(
                 task_title=task.title,
                 round_number=round_num,
@@ -1104,35 +1022,53 @@ async def _process_task(
                 model=effective_model,
             )
 
-        # QA might approve despite test failures (e.g., flaky tests)
-        if approved_path.exists():
-            LOG.info("  ✅ GREEN — QA approved on round %d", round_num)
-            if emitter:
-                await emitter.emit_round_result(task.id, round_num, passed=True)
-                await emitter.emit_task_completed(task.id)
-                await emitter.emit_agent_exited(task.id, "Developer", success=True)
-            task.status = "completed"
-            task.rounds_used = round_num
-            await _commit_task(ctx, task)
-            if task.issue_number:
-                github.close_issue(ctx.repo_name, task.issue_number)
-            save_state(state)
-            return
+            if approved_path.exists():
+                LOG.info("  ✅ GREEN — QA approved on round %d", round_num)
+                if emitter:
+                    await emitter.emit_round_result(task.id, round_num, passed=True)
+                    await emitter.emit_task_completed(task.id)
+                    await emitter.emit_agent_exited(task.id, "Developer", success=True)
+                task.status = "completed"
+                task.rounds_used = round_num
+                await _commit_task(ctx, task)
+                if task.issue_number:
+                    github.close_issue(ctx.repo_name, task.issue_number)
+                save_state(state)
+                return
 
-        if not feedback_path.exists():
-            feedback_path.write_text(
-                f"# Feedback — Round {round_num}\n\n"
-                f"Test output:\n\n```\n{test_output}\n```\n"
-            )
+            # QA rejected — feedback written, continue to next round
+            LOG.info("  🔍 QA rejected — Developer will address feedback")
+            if emitter:
+                await emitter.emit_log(
+                    task.id,
+                    f"🔍 QA rejected round {round_num} — feedback written",
+                    "failure",
+                )
+                await emitter.emit_round_result(task.id, round_num, passed=False)
+            continue
+
+        # Tests failed — write test output as feedback for next round
+        # No QA agent needed. Developer reads the output directly.
+        feedback_path = Path(ctx.working_dir) / "feedback.md"
+        failure_hint = _analyze_failure(test_output)
+
+        if failure_hint:
+            LOG.info("    🧠 Failure: %s", failure_hint[:80])
+
+        feedback_path.write_text(
+            f"# Feedback — Round {round_num}\n\n"
+            + (f"## Analysis\n{failure_hint}\n\n" if failure_hint else "")
+            + f"## Test Output\n```\n{test_output[-2000:]}\n```\n"
+        )
 
         if emitter:
             await emitter.emit_log(
                 task.id,
-                f"🔴 RED — round {round_num} failed",
+                f"🔴 RED — round {round_num} failed"
+                + (f" ({failure_hint[:50]})" if failure_hint else ""),
                 "failure",
             )
             await emitter.emit_round_result(task.id, round_num, passed=False)
-            await emitter.emit_agent_exited(task.id, "QA Engineer", success=False)
         LOG.warning("  🔴 RED — round %d failed", round_num)
 
     if emitter:
