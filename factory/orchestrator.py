@@ -385,6 +385,12 @@ async def run_job(
             github.close_issue(repo_name, issue_number)
             state.status = "completed"
             save_state(state)
+
+            # Auto-cleanup: close all sub-issues for this parent
+            _auto_cleanup_sub_issues(
+                github, repo_name, issue_number
+            )
+
             await emitter.emit_log(
                 job_tag,
                 f"✅ All {len(completed)} tasks complete. "
@@ -856,6 +862,34 @@ async def _process_batch_parallel(
     """Process a batch of independent tasks in parallel."""
     coros = [_process_task(task, ctx, github, model, state) for task in batch]
     await asyncio.gather(*coros)
+
+
+def _auto_cleanup_sub_issues(
+    github: GitHubClient,
+    repo_name: str,
+    parent_issue: int,
+) -> None:
+    """Close all sub-issues and needs-human issues for a parent."""
+    try:
+        repo = github.get_repo(repo_name)
+        label = f"issue-{parent_issue}"
+        for issue in repo.get_issues(
+            state="open", labels=["auto-generated", label]
+        ):
+            issue.edit(state="closed", state_reason="completed")
+        for issue in github.find_needs_human_issues(
+            repo_name, parent_issue
+        ):
+            issue.edit(state="closed", state_reason="completed")
+        LOG.info(
+            "🧹 Auto-closed sub-issues for #%d", parent_issue
+        )
+    except Exception as exc:
+        LOG.warning(
+            "Could not auto-close sub-issues for #%d: %s",
+            parent_issue,
+            exc,
+        )
 
 
 def _load_tasks(working_dir: str) -> list[TaskInfo]:
