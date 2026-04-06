@@ -113,15 +113,23 @@ Common things that already exist (skip these):
 
 ## Standards by Project Type
 
+### All Projects (required)
+- `CHANGELOG.md` — track version history (Keep a Changelog format)
+- `.editorconfig` — consistent indentation/encoding across editors
+- `.gitignore` — language-appropriate ignores
+- Semantic versioning in package manifest (pyproject.toml, package.json)
+- CI/CD workflow (`.github/workflows/ci.yml`) — lint, test, build on push/PR
+
 ### Python (API, CLI, library)
 - `Makefile` with: develop, test, fast-test, check, format, clean, docker-build
 - `pyproject.toml` with ruff, mypy, pytest config
 - `Dockerfile` (multi-stage, non-root user)
 - `.env.example` with placeholder values
-- `.gitignore`
 - Type hints on all functions
 - API versioning: all endpoints under `/api/v1/` prefix
 - Pydantic models for all request/response schemas
+- Tests organized by feature (`test_weather.py`, `test_cache.py`), NOT by issue/task number
+- Pre-commit hooks: ruff check + ruff format
 
 ### Terraform / Infrastructure
 - `Makefile` with: init, plan, apply, destroy, fmt, validate, check
@@ -133,11 +141,13 @@ Common things that already exist (skip these):
 - No secrets in .tf files
 
 ### React / Frontend
-- `package.json` with dev, build, preview scripts
+- `package.json` with dev, build, preview, test, lint scripts
 - `vite.config.ts` with API proxy
 - `tailwind.config.ts` for styling
-- `tsconfig.json` for TypeScript
+- `tsconfig.json` for TypeScript (strict mode)
 - Component-based structure in `src/components/`
+- Prettier for formatting (`.prettierrc`)
+- Tests with vitest + @testing-library/react
 
 ## Subtasks (Optional)
 

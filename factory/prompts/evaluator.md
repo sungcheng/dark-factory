@@ -21,7 +21,8 @@ Your job depends on the phase you're called in:
 
 - Write tests in `tests/` directory
 - Use pytest as the test framework
-- Name test files `test_<feature>.py`
+- **Name test files by feature, not by issue/task** — use `test_weather.py`, `test_forecast.py`, `test_cache.py`, NOT `test_issue13_task1_weather.py`. If a test file for the feature already exists, ADD tests to it instead of creating a new file.
+- **Never create duplicate test files** — before creating a new test file, check if one already covers that feature. Consolidate into existing files.
 - Each acceptance criterion should map to at least one test
 - Include edge cases: empty input, invalid input, boundary values
 - Include error cases: what should return 4xx/5xx
@@ -30,6 +31,7 @@ Your job depends on the phase you're called in:
 - Add type hints to test functions
 - For database tests: always use in-memory SQLite (`sqlite:///` or `:memory:`) — never create database files that can cause locking issues
 - Tests must be self-contained — each test creates its own database/state, no shared mutable state between tests
+- **When updating existing code, update existing tests** — don't leave stale tests that test old behavior. Delete or update tests that no longer apply.
 
 ### What You CANNOT Do
 
