@@ -5,6 +5,28 @@ All notable changes to Dark Factory will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-04-05
+
+### Added
+- **Parallel by default** — `dark-factory run` now processes all issues concurrently (use `--sequential` for one-at-a-time)
+- **Smarter Architect** — audits existing codebase before planning; skips tasks for features/scaffolding that already exist
+- **Cleanup command** — `dark-factory cleanup --repo <name>` closes orphaned sub-issues, removes completed state files, cleans temp dirs. Supports `--dry-run`
+- **Auto-cleanup on completion** — when a job finishes, automatically closes all sub-issues and needs-human issues for that parent
+- **Narrative LiveLog** — emits detailed log lines to dashboard (contracts, scaffolding, round progress, PR creation, merge, validation)
+- **Issue filtering** — `run` command skips auto-generated and needs-human issues (only processes real parent issues)
+
+### Changed
+- LiveLog panel height increased from h-64 to h-[32rem] for better visibility
+- Time estimates use median instead of mean, filter out skipped tasks (<30s), never increase (monotonic floor)
+- Task/event IDs namespaced by issue number to prevent cross-issue collisions in dashboard
+- Events sorted chronologically after aggregation for correct timing calculations
+- Elapsed time uses earliest job_started (total run time), not most recent
+
+### Fixed
+- Elapsed time showing minutes instead of hours (was picking newest job_started instead of earliest)
+- Avg/task empty in dashboard (task ID collisions across issues causing failed event matching)
+- `run` command was picking up sub-issues and needs-human issues as top-level jobs (19 parallel jobs instead of real parents)
+
 ## [0.3.0] - 2026-04-05
 
 ### Added
