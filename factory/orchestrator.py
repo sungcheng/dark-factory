@@ -13,8 +13,8 @@ from pathlib import Path
 
 from factory.agents.evaluator import run_evaluator_regression
 from factory.agents.evaluator import run_evaluator_review
+from factory.agents.evaluator import run_final_review
 from factory.agents.generator import run_generator
-from factory.agents.generator import run_staff_review
 from factory.agents.planner import run_planner
 from factory.dashboard.emitter import EventEmitter
 from factory.github_client import GitHubClient
@@ -325,18 +325,18 @@ async def run_job(
             # Clean up DF artifacts from the repo
             await _cleanup_df_artifacts(ctx)
 
-            # Staff Engineer review — opus reads everything and optimizes
-            LOG.info("👨‍💻 Staff Engineer reviewing code quality...")
+            # QA Lead final review — opus reads everything holistically
+            LOG.info("🔍 QA Lead: holistic review...")
             await emitter.emit_log(
                 job_tag,
-                "👨‍💻 Staff Engineer reviewing code quality (opus)...",
+                "🔍 QA Lead reviewing full implementation (opus)...",
             )
-            staff_result = await run_staff_review(
+            review_result = await run_final_review(
                 issue_title=issue.title,
                 issue_body=issue.body or "",
                 working_dir=ctx.working_dir,
             )
-            if staff_result.success:
+            if review_result.success:
                 # Commit and push any improvements
                 proc = await asyncio.create_subprocess_exec(
                     "git",
@@ -363,17 +363,17 @@ async def run_job(
                         "git",
                         "commit",
                         "-m",
-                        "refactor: staff engineer code review improvements",
+                        "refactor: QA lead review improvements",
                         cwd=ctx.working_dir,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
                     await proc.communicate()
                     await _push_changes(ctx)
-                    LOG.info("✅ Staff Engineer committed improvements")
+                    LOG.info("✅ QA Lead committed improvements")
                     await emitter.emit_log(
                         job_tag,
-                        "✅ Staff Engineer improvements committed",
+                        "✅ QA Lead improvements committed",
                         "success",
                     )
                     # Re-validate after staff changes
@@ -381,7 +381,7 @@ async def run_job(
                         ctx.working_dir,
                     )
                     if not still_ok:
-                        LOG.warning("⚠️ Staff Engineer broke tests — reverting")
+                        LOG.warning("⚠️ QA Lead broke tests — reverting")
                         proc = await asyncio.create_subprocess_exec(
                             "git",
                             "revert",
@@ -394,10 +394,10 @@ async def run_job(
                         await proc.communicate()
                         await _push_changes(ctx)
                 else:
-                    LOG.info("✅ Staff Engineer: code looks good, no changes")
+                    LOG.info("✅ QA Lead: code looks good, no changes")
                     await emitter.emit_log(
                         job_tag,
-                        "✅ Staff Engineer: code is clean",
+                        "✅ QA Lead: code is clean",
                         "success",
                     )
 
@@ -1018,18 +1018,47 @@ async def _process_task(
         passed, test_output = await _run_tests_with_check(ctx.working_dir)
 
         if passed:
+            # Reflection: simple tasks skip QA — tests pass = done
+            if task.complexity == "simple":
+                LOG.info(
+                    "  ✅ GREEN — round %d (simple, skipping QA)",
+                    round_num,
+                )
+                if emitter:
+                    await emitter.emit_log(
+                        task.id,
+                        f"✅ GREEN — round {round_num} (simple task, no QA needed)",
+                        "success",
+                    )
+                    await emitter.emit_round_result(
+                        task.id,
+                        round_num,
+                        passed=True,
+                    )
+                    await emitter.emit_task_completed(task.id)
+                task.status = "completed"
+                task.rounds_used = round_num
+                await _commit_task(ctx, task)
+                if task.issue_number:
+                    github.close_issue(ctx.repo_name, task.issue_number)
+                save_state(state)
+                return
+
+            # Medium/complex: QA verifies tests cover the spec
             LOG.info(
-                "  ✅ Tests pass on round %d — QA final review...",
+                "  ✅ Tests pass round %d — QA reviewing...",
                 round_num,
             )
             if emitter:
                 await emitter.emit_log(
                     task.id,
-                    f"✅ Tests pass on round {round_num} — QA reviewing...",
+                    f"✅ Tests pass round {round_num} — QA reviewing...",
                 )
-                await emitter.emit_agent_spawned(task.id, "QA Engineer (Review)")
+                await emitter.emit_agent_spawned(
+                    task.id,
+                    "QA Engineer (Review)",
+                )
 
-            # QA final review: verify tests cover the spec
             approved_path = Path(ctx.working_dir) / "approved.md"
             feedback_path = Path(ctx.working_dir) / "feedback.md"
             _cleanup_artifacts(ctx.working_dir)
@@ -1042,11 +1071,22 @@ async def _process_task(
             )
 
             if approved_path.exists():
-                LOG.info("  ✅ GREEN — QA approved on round %d", round_num)
+                LOG.info(
+                    "  ✅ GREEN — QA approved round %d",
+                    round_num,
+                )
                 if emitter:
-                    await emitter.emit_round_result(task.id, round_num, passed=True)
+                    await emitter.emit_round_result(
+                        task.id,
+                        round_num,
+                        passed=True,
+                    )
                     await emitter.emit_task_completed(task.id)
-                    await emitter.emit_agent_exited(task.id, "Developer", success=True)
+                    await emitter.emit_agent_exited(
+                        task.id,
+                        "Developer",
+                        success=True,
+                    )
                 task.status = "completed"
                 task.rounds_used = round_num
                 await _commit_task(ctx, task)
@@ -1055,15 +1095,19 @@ async def _process_task(
                 save_state(state)
                 return
 
-            # QA rejected — feedback written, continue to next round
-            LOG.info("  🔍 QA rejected — Developer will address feedback")
+            # QA rejected — feedback written, next round
+            LOG.info("  🔍 QA rejected — Developer will fix")
             if emitter:
                 await emitter.emit_log(
                     task.id,
-                    f"🔍 QA rejected round {round_num} — feedback written",
+                    f"🔍 QA rejected round {round_num}",
                     "failure",
                 )
-                await emitter.emit_round_result(task.id, round_num, passed=False)
+                await emitter.emit_round_result(
+                    task.id,
+                    round_num,
+                    passed=False,
+                )
             continue
 
         # Tests failed — write test output as feedback for next round

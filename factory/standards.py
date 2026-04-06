@@ -41,7 +41,7 @@ ROLE_SECTIONS: dict[str, list[str]] = {
         "Testing — Python",
         "Testing — React",
     ],
-    "Staff Engineer": [
+    "QA Lead": [
         "3. Pull Requests",
         "4. API Design",
         "7. Testing",

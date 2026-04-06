@@ -214,3 +214,56 @@ async def run_evaluator_review(
     )
 
     return await run_agent(config)
+
+
+async def run_final_review(
+    issue_title: str,
+    issue_body: str,
+    working_dir: str,
+    model: str | None = None,
+) -> AgentResult:
+    """Holistic QA review after all tasks are merged (opus).
+
+    Reads the full codebase against the original issue. Checks for
+    code quality, test coverage gaps, bloated tests, missing docs,
+    and makes targeted improvements. Auto-reverts if changes break tests.
+    """
+    standards = load_standards_for_role(working_dir, "QA Lead")
+
+    prompt = (
+        "You are the **QA Lead** doing a holistic review of a completed "
+        "issue. All tasks have been merged and tests pass. Your job:\n\n"
+        f"{standards}\n\n"
+        "1. **Read the original issue** (below)\n"
+        "2. **Read `ARCHITECTURE.md`** and `CONTEXT.md` files, then "
+        "deep-read source where you see issues\n"
+        "3. **Review the full implementation** against the spec:\n"
+        "   - Does the code satisfy the issue requirements?\n"
+        "   - Edge cases the Developer missed?\n"
+        "   - Tests validating spec, not just implementation?\n"
+        "4. **Make targeted improvements**:\n"
+        "   - Fix code smells, anti-patterns, inefficiencies\n"
+        "   - Consolidate bloated/duplicate test files\n"
+        "   - Add missing error handling at boundaries\n"
+        "   - Remove dead code, unused imports\n"
+        "5. **Update documentation**:\n"
+        "   - Update `ARCHITECTURE.md` if components changed\n"
+        "   - Update/create `CONTEXT.md` in modified modules\n"
+        "   - Update `CHANGELOG.md`\n"
+        "6. Run `make test` and `make check` — must still pass\n\n"
+        "Keep changes surgical. If code is good, say so.\n\n"
+        f"---\n\n"
+        f"## Original Issue\n\n"
+        f"**Title**: {issue_title}\n\n"
+        f"**Requirements**:\n{issue_body}\n"
+    )
+
+    config = AgentConfig(
+        role="QA Lead",
+        prompt=prompt,
+        allowed_tools=["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
+        working_dir=working_dir,
+        model=model or "opus",
+    )
+
+    return await run_agent(config)

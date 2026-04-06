@@ -68,7 +68,7 @@ class TestDefaultModels:
             "QA Engineer (Contracts)",
             "QA Engineer (Regression)",
             "Developer",
-            "Staff Engineer",
+            "QA Lead",
         }
         assert set(DEFAULT_MODELS.keys()) == expected_roles
 
