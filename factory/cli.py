@@ -344,5 +344,152 @@ def release(push: bool) -> None:
         click.echo(f"Tag created locally. Push with: git push origin {tag}")
 
 
+@main.command()
+@click.option("--repo", "-r", required=True, help="Target repo name")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Show what would be cleaned without doing it",
+)
+def cleanup(repo: str, dry_run: bool) -> None:
+    """Clean up stale sub-issues, state files, and temp dirs for a repo.
+
+    Closes orphaned sub-issues whose parent is done, removes completed
+    state files, and cleans up temp clone directories.
+
+    Examples:
+        dark-factory cleanup --repo weather-app
+        dark-factory cleanup --repo weather-app --dry-run
+    """
+    import glob
+    import pathlib
+    import shutil
+
+    from factory.github_client import GitHubClient
+    from factory.state import STATE_DIR
+
+    github = GitHubClient()
+    repo_obj = github.get_repo(repo)
+    prefix = f"{repo}-"
+    action = "Would" if dry_run else "Will"
+
+    # 1. Close orphaned sub-issues whose parent issue is closed
+    click.echo("Scanning for orphaned sub-issues...")
+    auto_issues = list(
+        repo_obj.get_issues(state="open", labels=["auto-generated"])
+    )
+    needs_human = list(
+        repo_obj.get_issues(state="open", labels=["needs-human"])
+    )
+
+    orphan_count = 0
+    for issue in auto_issues + needs_human:
+        # Extract parent issue number from body
+        body = issue.body or ""
+        parent_num = None
+        for line in body.split("\n"):
+            if line.strip().startswith("Parent: #"):
+                try:
+                    parent_num = int(
+                        line.strip()
+                        .replace("Parent: #", "")
+                        .strip()
+                    )
+                except ValueError:
+                    pass
+                break
+            if "Original issue" in line and "#" in line:
+                try:
+                    part = line.split("#")[1].split()[0].strip()
+                    parent_num = int(part)
+                except (ValueError, IndexError):
+                    pass
+                break
+
+        if parent_num is None:
+            continue
+
+        # Check if parent is closed
+        try:
+            parent = repo_obj.get_issue(parent_num)
+            if parent.state == "closed":
+                orphan_count += 1
+                if dry_run:
+                    click.echo(
+                        f"  {action} close #{issue.number}: "
+                        f"{issue.title} (parent #{parent_num} closed)"
+                    )
+                else:
+                    issue.edit(state="closed", state_reason="completed")
+                    click.echo(
+                        f"  Closed #{issue.number}: {issue.title}"
+                    )
+        except Exception:
+            pass
+
+    click.echo(f"  {orphan_count} orphaned issue(s) {'found' if dry_run else 'closed'}")
+
+    # 2. Clean up completed state files
+    click.echo("\nScanning state files...")
+    state_files = sorted(STATE_DIR.glob(f"{prefix}*.json"))
+    cleaned_states = 0
+    for path in state_files:
+        try:
+            import json
+
+            data = json.loads(path.read_text())
+            if data.get("status") == "completed":
+                cleaned_states += 1
+                if dry_run:
+                    click.echo(
+                        f"  {action} remove {path.name}"
+                    )
+                else:
+                    path.unlink()
+                    click.echo(f"  Removed {path.name}")
+        except Exception:
+            pass
+
+    state_verb = "found" if dry_run else "removed"
+    click.echo(f"  {cleaned_states} completed state file(s) {state_verb}")
+
+    # 3. Clean up orphaned temp clone directories
+    click.echo("\nScanning temp directories...")
+    tmp_dirs = glob.glob("/tmp/dark-factory-*") + glob.glob(
+        "/var/folders/**/dark-factory-*", recursive=True
+    )
+    # Only clean dirs that aren't referenced by active state files
+    active_dirs: set[str] = set()
+    for path in STATE_DIR.glob(f"{prefix}*.json"):
+        try:
+            data = json.loads(path.read_text())
+            wd = data.get("working_dir", "")
+            if wd:
+                active_dirs.add(wd)
+        except Exception:
+            pass
+
+    cleaned_dirs = 0
+    for tmp_dir in tmp_dirs:
+        tmp_path = pathlib.Path(tmp_dir)
+        if tmp_dir not in active_dirs and tmp_path.is_dir():
+            cleaned_dirs += 1
+            if dry_run:
+                click.echo(f"  {action} remove {tmp_dir}")
+            else:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+                click.echo(f"  Removed {tmp_dir}")
+
+    dir_verb = "found" if dry_run else "removed"
+    click.echo(f"  {cleaned_dirs} orphaned temp dir(s) {dir_verb}")
+
+    # Summary
+    total = orphan_count + cleaned_states + cleaned_dirs
+    if dry_run:
+        click.echo(f"\nDry run complete. {total} item(s) would be cleaned.")
+    else:
+        click.echo(f"\nCleanup complete. {total} item(s) cleaned.")
+
+
 if __name__ == "__main__":
     main()

@@ -58,6 +58,12 @@ dashboard-stop:			## Stop the background dashboard server
 	@pkill -f "uvicorn factory.dashboard" 2>/dev/null && echo "Dashboard stopped" || echo "Dashboard not running"
 
 # ─── Housekeeping ────────────────────────────────────────
+cleanup:			## Clean up stale issues, state files, temp dirs (usage: make cleanup repo=weather-app)
+	uv run dark-factory cleanup --repo $(repo)
+
+cleanup-dry:			## Preview cleanup without doing it (usage: make cleanup-dry repo=weather-app)
+	uv run dark-factory cleanup --repo $(repo) --dry-run
+
 clean:				## Remove build artifacts
 	rm -rf .venv __pycache__ .pytest_cache .mypy_cache dist *.egg-info
 

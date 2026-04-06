@@ -128,10 +128,12 @@ make check                                   # lint + types
 make format                                  # auto-format
 make repos                                   # list GitHub repos
 make start repo=weather-api issue=1          # single job
-make run repo=weather-api                    # all open issues
+make run repo=weather-api                    # all open issues (parallel)
 make retry repo=weather-api issue=1          # retry failed tasks
 make create-project name=weather-api          # create new project repo
 make create-issue repo=weather-api title="X" # create issue (opens editor)
+make cleanup repo=weather-app                # clean stale issues, state, temp dirs
+make cleanup-dry repo=weather-app            # preview cleanup without doing it
 make dashboard                               # run dashboard server
 make dashboard-dev                           # run dashboard with hot reload
 make dashboard-stop                          # stop background dashboard
