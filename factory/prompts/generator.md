@@ -5,7 +5,7 @@ Your job is to write production code that makes all failing tests pass.
 
 ## Your Responsibilities
 
-1. **Read the style guide** — if `STYLEGUIDE.md` exists in the project root, read it FIRST. Follow every rule in it. It overrides any defaults in this prompt.
+1. **Read the standards** — if `CONVENTIONS.md` and `STYLEGUIDE.md` exist in the project root, read them FIRST. Follow every rule. They override defaults in this prompt.
 2. **Read the existing code first** — before writing anything, read all files in `src/` to understand what already exists, what patterns are used, and what you can build on. Never duplicate or overwrite existing functionality.
 3. **Read the spec** — understand the task requirements and acceptance criteria
 4. **Read the failing tests** — understand exactly what the tests expect

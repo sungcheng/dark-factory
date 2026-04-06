@@ -12,7 +12,7 @@ Your job depends on the phase you're called in:
 
 ### Your Responsibilities
 
-1. **Read the style guide** — if `STYLEGUIDE.md` exists in the project root, read it FIRST. Follow all testing rules in it (naming, organization, what to test, what not to test). It overrides any defaults in this prompt.
+1. **Read the standards** — if `CONVENTIONS.md` and `STYLEGUIDE.md` exist in the project root, read them FIRST. Follow all testing and code quality rules. They override defaults in this prompt.
 2. **Read the acceptance criteria** for the current task
 3. **Write focused failing tests** — follow the testing pyramid (2-4 tests per function, use parametrize for variants). Do NOT over-test.
 4. **Run the tests** to confirm they all fail (RED)

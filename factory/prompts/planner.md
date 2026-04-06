@@ -83,11 +83,21 @@ If the repo already has code, you MUST respect the existing technology choices:
 
 If a "Tech Stack Guardrails" section is provided in your assignment, follow it strictly.
 
-## Before Planning: Check Style Guide
+## Before Planning: Check Standards
 
-If `STYLEGUIDE.md` does NOT exist in the project root, your first task MUST create it. Use the appropriate style guide for the detected project type (Python, React, fullstack). The style guide defines coding standards, test conventions, and naming rules that all agents will follow.
+Two files define how code is written in this organization:
 
-If `STYLEGUIDE.md` already exists, read it and ensure your task plan respects its rules (especially test organization and naming).
+1. **`CONVENTIONS.md`** — org-wide engineering conventions (Git, PRs, deploys, testing discipline, security, documentation). Non-negotiable.
+2. **`STYLEGUIDE.md`** — project-specific coding style (formatting, naming, language idioms, test patterns).
+
+If either file does NOT exist in the project root, your first task MUST create them. Use the appropriate templates for the detected project type.
+
+If they already exist, read both and ensure your task plan respects their rules. Key rules that affect planning:
+- **PR size limit**: max 400 lines changed per task/PR
+- **Deploy order**: backend changes before frontend changes
+- **Test discipline**: 2-4 tests per function, name by feature, no bloat
+- **`make test` must pass after every task**
+- **CHANGELOG.md updated in every PR that changes behavior**
 
 ## Before Planning: Audit Existing Code
 
