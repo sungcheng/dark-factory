@@ -1193,8 +1193,43 @@ async def _process_batch_with_worktrees(
         *[_run_task_in_worktree(t, wt_dir) for t, wt_dir, _ in worktree_info]
     )
 
-    # Push and merge completed tasks, cleanup worktrees
+    # Push and merge completed tasks sequentially (each merge
+    # changes main, so subsequent tasks must rebase first)
     for task, wt_dir, task_branch in worktree_info:
+        # Pull latest main into worktree and rebase task branch
+        proc = await asyncio.create_subprocess_exec(
+            "git", "fetch", "origin", "main",
+            cwd=wt_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        proc = await asyncio.create_subprocess_exec(
+            "git", "rebase", "origin/main",
+            cwd=wt_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            LOG.warning(
+                "Rebase failed for %s — aborting and retrying with merge",
+                task_branch,
+            )
+            await asyncio.create_subprocess_exec(
+                "git", "rebase", "--abort",
+                cwd=wt_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            proc = await asyncio.create_subprocess_exec(
+                "git", "merge", "origin/main", "--no-edit",
+                cwd=wt_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+
         wt_ctx = JobContext(
             repo_name=ctx.repo_name,
             issue_number=ctx.issue_number,
