@@ -116,9 +116,7 @@ def run(repo: str, model: str | None, sequential: bool) -> None:
             i
             for i in repo_obj.get_issues(state="open")
             if not i.pull_request
-            and not skip_labels.intersection(
-                {lbl.name for lbl in i.labels}
-            )
+            and not skip_labels.intersection({lbl.name for lbl in i.labels})
         ],
         key=lambda i: i.number,
     )
@@ -369,63 +367,36 @@ def cleanup(repo: str, dry_run: bool) -> None:
     from factory.state import STATE_DIR
 
     github = GitHubClient()
-    repo_obj = github.get_repo(repo)
     prefix = f"{repo}-"
     action = "Would" if dry_run else "Will"
 
     # 1. Close orphaned sub-issues whose parent issue is closed
     click.echo("Scanning for orphaned sub-issues...")
-    auto_issues = list(
-        repo_obj.get_issues(state="open", labels=["auto-generated"])
-    )
-    needs_human = list(
-        repo_obj.get_issues(state="open", labels=["needs-human"])
-    )
-
-    orphan_count = 0
-    for issue in auto_issues + needs_human:
-        # Extract parent issue number from body
-        body = issue.body or ""
-        parent_num = None
-        for line in body.split("\n"):
-            if line.strip().startswith("Parent: #"):
+    if dry_run:
+        # For dry-run, do manual scan to show what would happen
+        repo_obj = github.get_repo(repo)
+        auto_issues = list(repo_obj.get_issues(state="open", labels=["auto-generated"]))
+        needs_human = list(repo_obj.get_issues(state="open", labels=["needs-human"]))
+        orphan_count = 0
+        seen_parents: dict[int, bool] = {}
+        for issue in auto_issues + needs_human:
+            parent_num = github._extract_parent_number(issue)
+            if parent_num is None:
+                continue
+            if parent_num not in seen_parents:
                 try:
-                    parent_num = int(
-                        line.strip()
-                        .replace("Parent: #", "")
-                        .strip()
-                    )
-                except ValueError:
-                    pass
-                break
-            if "Original issue" in line and "#" in line:
-                try:
-                    part = line.split("#")[1].split()[0].strip()
-                    parent_num = int(part)
-                except (ValueError, IndexError):
-                    pass
-                break
-
-        if parent_num is None:
-            continue
-
-        # Check if parent is closed
-        try:
-            parent = repo_obj.get_issue(parent_num)
-            if parent.state == "closed":
+                    parent = repo_obj.get_issue(parent_num)
+                    seen_parents[parent_num] = parent.state == "closed"
+                except Exception:
+                    seen_parents[parent_num] = False
+            if seen_parents[parent_num]:
                 orphan_count += 1
-                if dry_run:
-                    click.echo(
-                        f"  {action} close #{issue.number}: "
-                        f"{issue.title} (parent #{parent_num} closed)"
-                    )
-                else:
-                    issue.edit(state="closed", state_reason="completed")
-                    click.echo(
-                        f"  Closed #{issue.number}: {issue.title}"
-                    )
-        except Exception:
-            pass
+                click.echo(
+                    f"  {action} close #{issue.number}: "
+                    f"{issue.title} (parent #{parent_num} closed)"
+                )
+    else:
+        orphan_count = github.cleanup_orphaned_issues(repo)
 
     click.echo(f"  {orphan_count} orphaned issue(s) {'found' if dry_run else 'closed'}")
 
@@ -441,9 +412,7 @@ def cleanup(repo: str, dry_run: bool) -> None:
             if data.get("status") == "completed":
                 cleaned_states += 1
                 if dry_run:
-                    click.echo(
-                        f"  {action} remove {path.name}"
-                    )
+                    click.echo(f"  {action} remove {path.name}")
                 else:
                     path.unlink()
                     click.echo(f"  Removed {path.name}")

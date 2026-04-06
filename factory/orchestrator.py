@@ -103,6 +103,14 @@ async def run_job(
             "Fix the issues above before running the factory."
         )
 
+    # Clean up orphaned issues from previous failed/killed runs
+    orphan_count = github.cleanup_orphaned_issues(repo_name)
+    if orphan_count:
+        LOG.info(
+            "🧹 Cleaned up %d orphaned issue(s) from previous runs",
+            orphan_count,
+        )
+
     tech_stack = preflight.tech_stack
     LOG.info("🔍 Tech stack: %s", tech_stack.summary())
     await emitter.emit_log(job_tag, f"🔍 Tech stack: {tech_stack.summary()}")
@@ -227,15 +235,27 @@ async def run_job(
         if len(batch) > 1:
             # Parallel batch: run independent tasks concurrently via worktrees
             await _process_batch_with_worktrees(
-                batch, ctx, github, model, state, emitter,
-                repo_name, issue_number,
+                batch,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
+                repo_name,
+                issue_number,
             )
         else:
             # Single task — no worktree overhead
             task = batch[0]
             await _process_single_task_in_batch(
-                task, ctx, github, model, state, emitter,
-                repo_name, issue_number,
+                task,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
+                repo_name,
+                issue_number,
             )
 
     # Step 7: Finalize
@@ -300,14 +320,19 @@ async def run_job(
             if staff_result.success:
                 # Commit and push any improvements
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "add", "-A",
+                    "git",
+                    "add",
+                    "-A",
                     cwd=ctx.working_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
                 await proc.communicate()
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "diff", "--cached", "--quiet",
+                    "git",
+                    "diff",
+                    "--cached",
+                    "--quiet",
                     cwd=ctx.working_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -316,7 +341,9 @@ async def run_job(
                 if proc.returncode != 0:
                     # There are staged changes — commit them
                     proc = await asyncio.create_subprocess_exec(
-                        "git", "commit", "-m",
+                        "git",
+                        "commit",
+                        "-m",
                         "refactor: staff engineer code review improvements",
                         cwd=ctx.working_dir,
                         stdout=asyncio.subprocess.PIPE,
@@ -335,11 +362,11 @@ async def run_job(
                         ctx.working_dir,
                     )
                     if not still_ok:
-                        LOG.warning(
-                            "⚠️ Staff Engineer broke tests — reverting"
-                        )
+                        LOG.warning("⚠️ Staff Engineer broke tests — reverting")
                         proc = await asyncio.create_subprocess_exec(
-                            "git", "revert", "HEAD",
+                            "git",
+                            "revert",
+                            "HEAD",
                             "--no-edit",
                             cwd=ctx.working_dir,
                             stdout=asyncio.subprocess.PIPE,
@@ -348,9 +375,7 @@ async def run_job(
                         await proc.communicate()
                         await _push_changes(ctx)
                 else:
-                    LOG.info(
-                        "✅ Staff Engineer: code looks good, no changes"
-                    )
+                    LOG.info("✅ Staff Engineer: code looks good, no changes")
                     await emitter.emit_log(
                         job_tag,
                         "✅ Staff Engineer: code is clean",
@@ -363,9 +388,7 @@ async def run_job(
             save_state(state)
 
             # Auto-cleanup: close all sub-issues for this parent
-            _auto_cleanup_sub_issues(
-                github, repo_name, issue_number
-            )
+            _auto_cleanup_sub_issues(github, repo_name, issue_number)
 
             await emitter.emit_log(
                 job_tag,
@@ -383,6 +406,10 @@ async def run_job(
             await emitter.emit_job_failed(repo_name, issue_number)
             state.status = "failed"
             save_state(state)
+
+            # Clean up sub-issues even on failure
+            _auto_cleanup_sub_issues(github, repo_name, issue_number)
+
             await emitter.emit_log(
                 job_tag,
                 f"⚠️ Post-merge validation failed. Issue #{issue_number} left open.",
@@ -616,7 +643,12 @@ async def _process_task_with_subtasks(
                 depends_on=subtask.depends_on,
             )
             await _process_task(
-                pseudo_task, ctx, github, model, state, emitter,
+                pseudo_task,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
             subtask.status = pseudo_task.status
             save_state(state)
@@ -625,7 +657,8 @@ async def _process_task_with_subtasks(
                 save_state(state)
                 LOG.error(
                     "Subtask '%s' failed — stopping parent '%s'",
-                    subtask.title, task.title,
+                    subtask.title,
+                    task.title,
                 )
                 return
         else:
@@ -642,7 +675,12 @@ async def _process_task_with_subtasks(
                 )
 
             results = await _run_subtasks_parallel(
-                sub_batch, ctx, github, model, state, emitter,
+                sub_batch,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
 
             # Check results
@@ -654,7 +692,8 @@ async def _process_task_with_subtasks(
                     save_state(state)
                     LOG.error(
                         "Subtask '%s' failed — stopping parent '%s'",
-                        subtask.title, task.title,
+                        subtask.title,
+                        task.title,
                     )
                     return
 
@@ -691,7 +730,10 @@ async def _run_subtasks_parallel(
 
         # Delete stale branch if it exists (from previous runs)
         proc = await asyncio.create_subprocess_exec(
-            "git", "branch", "-D", wt_branch,
+            "git",
+            "branch",
+            "-D",
+            wt_branch,
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -700,7 +742,12 @@ async def _run_subtasks_parallel(
 
         # Create worktree from current branch
         proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", "-b", wt_branch, wt_dir,
+            "git",
+            "worktree",
+            "add",
+            "-b",
+            wt_branch,
+            wt_dir,
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -714,7 +761,12 @@ async def _run_subtasks_parallel(
             # Cleanup and fall back
             shutil.rmtree(wt_dir, ignore_errors=True)
             return await _run_subtasks_sequential(
-                subtasks, ctx, github, model, state, emitter,
+                subtasks,
+                ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
 
         # Copy CLAUDE.md security policy to worktree
@@ -730,7 +782,8 @@ async def _run_subtasks_parallel(
 
     # Run all subtasks in parallel
     async def _run_one(
-        subtask: SubTaskInfo, wt_dir: str,
+        subtask: SubTaskInfo,
+        wt_dir: str,
     ) -> tuple[SubTaskInfo, str]:
         LOG.info("  🔹 Subtask (parallel): %s", subtask.title)
         pseudo_task = TaskInfo(
@@ -749,7 +802,12 @@ async def _run_subtasks_parallel(
             tasks=ctx.tasks,
         )
         await _process_task(
-            pseudo_task, wt_ctx, github, model, state, emitter,
+            pseudo_task,
+            wt_ctx,
+            github,
+            model,
+            state,
+            emitter,
         )
         return subtask, pseudo_task.status
 
@@ -759,13 +817,14 @@ async def _run_subtasks_parallel(
 
     # Merge worktree changes back to main working dir
     for subtask, wt_dir, wt_branch in worktrees:
-        matched_status = next(
-            st_s for st, st_s in results if st.id == subtask.id
-        )
+        matched_status = next(st_s for st, st_s in results if st.id == subtask.id)
         if matched_status == "completed":
             # Cherry-pick commits from worktree branch
             proc = await asyncio.create_subprocess_exec(
-                "git", "merge", wt_branch, "--no-edit",
+                "git",
+                "merge",
+                wt_branch,
+                "--no-edit",
                 cwd=ctx.working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -778,7 +837,9 @@ async def _run_subtasks_parallel(
                 )
                 # Try to auto-resolve by accepting theirs
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", "--abort",
+                    "git",
+                    "merge",
+                    "--abort",
                     cwd=ctx.working_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -786,8 +847,12 @@ async def _run_subtasks_parallel(
                 await proc.communicate()
                 # Fall back: apply their changes with strategy
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", wt_branch,
-                    "-X", "theirs", "--no-edit",
+                    "git",
+                    "merge",
+                    wt_branch,
+                    "-X",
+                    "theirs",
+                    "--no-edit",
                     cwd=ctx.working_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -796,7 +861,11 @@ async def _run_subtasks_parallel(
 
         # Cleanup worktree
         proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "remove", wt_dir, "--force",
+            "git",
+            "worktree",
+            "remove",
+            wt_dir,
+            "--force",
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -804,7 +873,10 @@ async def _run_subtasks_parallel(
         await proc.communicate()
         # Delete temp branch
         proc = await asyncio.create_subprocess_exec(
-            "git", "branch", "-D", wt_branch,
+            "git",
+            "branch",
+            "-D",
+            wt_branch,
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -834,7 +906,12 @@ async def _run_subtasks_sequential(
             depends_on=subtask.depends_on,
         )
         await _process_task(
-            pseudo_task, ctx, github, model, state, emitter,
+            pseudo_task,
+            ctx,
+            github,
+            model,
+            state,
+            emitter,
         )
         subtask.status = pseudo_task.status
         save_state(state)
@@ -857,7 +934,9 @@ async def _process_task(
     effective_model = model or COMPLEXITY_MODELS.get(task.complexity, "sonnet")
     LOG.info(
         "🔧 Task: %s (complexity=%s, model=%s)",
-        task.title, task.complexity, effective_model,
+        task.title,
+        task.complexity,
+        effective_model,
     )
     if emitter:
         await emitter.emit_task_started(task.id)
@@ -1062,9 +1141,7 @@ async def _process_single_task_in_batch(
 
     if await _is_task_already_done(task, ctx, issue_number, github):
         LOG.info("⏭️ Skipping '%s' — already complete", task.title)
-        await emitter.emit_log(
-            task.id, f"⏭️ Skipping '{task.title}' — already complete"
-        )
+        await emitter.emit_log(task.id, f"⏭️ Skipping '{task.title}' — already complete")
         task.status = "completed"
         if task.issue_number:
             github.close_issue(ctx.repo_name, task.issue_number)
@@ -1076,16 +1153,32 @@ async def _process_single_task_in_batch(
 
     if task.has_subtasks:
         await _process_task_with_subtasks(
-            task, ctx, github, model, state, emitter,
+            task,
+            ctx,
+            github,
+            model,
+            state,
+            emitter,
         )
     else:
         await _process_task(
-            task, ctx, github, model, state, emitter,
+            task,
+            ctx,
+            github,
+            model,
+            state,
+            emitter,
         )
 
     await _finalize_task(
-        task, ctx, github, emitter, state,
-        repo_name, issue_number, task_branch,
+        task,
+        ctx,
+        github,
+        emitter,
+        state,
+        repo_name,
+        issue_number,
+        task_branch,
     )
 
 
@@ -1104,7 +1197,8 @@ async def _process_batch_with_worktrees(
     import tempfile
 
     LOG.info(
-        "🌳 Running %d tasks in parallel (worktrees)", len(batch),
+        "🌳 Running %d tasks in parallel (worktrees)",
+        len(batch),
     )
     await emitter.emit_log(
         f"{repo_name}#{issue_number}",
@@ -1137,7 +1231,10 @@ async def _process_batch_with_worktrees(
 
         # Delete stale branch if it exists (from previous runs)
         proc = await asyncio.create_subprocess_exec(
-            "git", "branch", "-D", task_branch,
+            "git",
+            "branch",
+            "-D",
+            task_branch,
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1145,7 +1242,12 @@ async def _process_batch_with_worktrees(
         await proc.communicate()  # ignore errors — branch may not exist
 
         proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "add", "-b", task_branch, wt_dir,
+            "git",
+            "worktree",
+            "add",
+            "-b",
+            task_branch,
+            wt_dir,
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1160,8 +1262,14 @@ async def _process_batch_with_worktrees(
             # Fall back to sequential
             for t in active_tasks:
                 await _process_single_task_in_batch(
-                    t, ctx, github, model, state, emitter,
-                    repo_name, issue_number,
+                    t,
+                    ctx,
+                    github,
+                    model,
+                    state,
+                    emitter,
+                    repo_name,
+                    issue_number,
                 )
             return
 
@@ -1177,7 +1285,8 @@ async def _process_batch_with_worktrees(
 
     # Run all tasks in parallel
     async def _run_task_in_worktree(
-        task: TaskInfo, wt_dir: str,
+        task: TaskInfo,
+        wt_dir: str,
     ) -> None:
         wt_ctx = JobContext(
             repo_name=ctx.repo_name,
@@ -1188,11 +1297,21 @@ async def _process_batch_with_worktrees(
         )
         if task.has_subtasks:
             await _process_task_with_subtasks(
-                task, wt_ctx, github, model, state, emitter,
+                task,
+                wt_ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
         else:
             await _process_task(
-                task, wt_ctx, github, model, state, emitter,
+                task,
+                wt_ctx,
+                github,
+                model,
+                state,
+                emitter,
             )
 
     await asyncio.gather(
@@ -1204,14 +1323,19 @@ async def _process_batch_with_worktrees(
     for task, wt_dir, task_branch in worktree_info:
         # Pull latest main into worktree and rebase task branch
         proc = await asyncio.create_subprocess_exec(
-            "git", "fetch", "origin", "main",
+            "git",
+            "fetch",
+            "origin",
+            "main",
             cwd=wt_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         await proc.communicate()
         proc = await asyncio.create_subprocess_exec(
-            "git", "rebase", "origin/main",
+            "git",
+            "rebase",
+            "origin/main",
             cwd=wt_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1223,15 +1347,20 @@ async def _process_batch_with_worktrees(
                 task_branch,
             )
             await asyncio.create_subprocess_exec(
-                "git", "rebase", "--abort",
+                "git",
+                "rebase",
+                "--abort",
                 cwd=wt_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             # Get the task's commits (not on origin/main)
             proc = await asyncio.create_subprocess_exec(
-                "git", "log", "origin/main..HEAD",
-                "--format=%H", "--reverse",
+                "git",
+                "log",
+                "origin/main..HEAD",
+                "--format=%H",
+                "--reverse",
                 cwd=wt_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -1241,14 +1370,19 @@ async def _process_batch_with_worktrees(
 
             # Reset to origin/main and cherry-pick commits
             await asyncio.create_subprocess_exec(
-                "git", "reset", "--hard", "origin/main",
+                "git",
+                "reset",
+                "--hard",
+                "origin/main",
                 cwd=wt_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             for commit_hash in commits:
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "cherry-pick", commit_hash,
+                    "git",
+                    "cherry-pick",
+                    commit_hash,
                     cwd=wt_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -1257,14 +1391,17 @@ async def _process_batch_with_worktrees(
                 if proc.returncode != 0:
                     # Skip conflicting commit, accept theirs
                     await asyncio.create_subprocess_exec(
-                        "git", "cherry-pick", "--abort",
+                        "git",
+                        "cherry-pick",
+                        "--abort",
                         cwd=wt_dir,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
                     LOG.warning(
                         "Skipped conflicting commit %s for %s",
-                        commit_hash[:8], task_branch,
+                        commit_hash[:8],
+                        task_branch,
                     )
 
         wt_ctx = JobContext(
@@ -1275,13 +1412,23 @@ async def _process_batch_with_worktrees(
             tasks=ctx.tasks,
         )
         await _finalize_task(
-            task, wt_ctx, github, emitter, state,
-            repo_name, issue_number, task_branch,
+            task,
+            wt_ctx,
+            github,
+            emitter,
+            state,
+            repo_name,
+            issue_number,
+            task_branch,
         )
 
         # Remove worktree
         proc = await asyncio.create_subprocess_exec(
-            "git", "worktree", "remove", wt_dir, "--force",
+            "git",
+            "worktree",
+            "remove",
+            wt_dir,
+            "--force",
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1308,14 +1455,19 @@ async def _finalize_task(
     if task.status == "completed":
         # Rebase onto latest main before pushing (other tasks may have merged)
         proc = await asyncio.create_subprocess_exec(
-            "git", "fetch", "origin", "main",
+            "git",
+            "fetch",
+            "origin",
+            "main",
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         await proc.communicate()
         proc = await asyncio.create_subprocess_exec(
-            "git", "rebase", "origin/main",
+            "git",
+            "rebase",
+            "origin/main",
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1324,14 +1476,19 @@ async def _finalize_task(
         if proc.returncode != 0:
             # Rebase failed — reset and cherry-pick
             await asyncio.create_subprocess_exec(
-                "git", "rebase", "--abort",
+                "git",
+                "rebase",
+                "--abort",
                 cwd=ctx.working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             proc = await asyncio.create_subprocess_exec(
-                "git", "log", "origin/main..HEAD",
-                "--format=%H", "--reverse",
+                "git",
+                "log",
+                "origin/main..HEAD",
+                "--format=%H",
+                "--reverse",
                 cwd=ctx.working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -1339,14 +1496,19 @@ async def _finalize_task(
             stdout, _ = await proc.communicate()
             commits = stdout.decode().strip().splitlines()
             await asyncio.create_subprocess_exec(
-                "git", "reset", "--hard", "origin/main",
+                "git",
+                "reset",
+                "--hard",
+                "origin/main",
                 cwd=ctx.working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             for commit_hash in commits:
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "cherry-pick", commit_hash,
+                    "git",
+                    "cherry-pick",
+                    commit_hash,
                     cwd=ctx.working_dir,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -1354,7 +1516,9 @@ async def _finalize_task(
                 await proc.communicate()
                 if proc.returncode != 0:
                     await asyncio.create_subprocess_exec(
-                        "git", "cherry-pick", "--abort",
+                        "git",
+                        "cherry-pick",
+                        "--abort",
                         cwd=ctx.working_dir,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
@@ -1362,7 +1526,10 @@ async def _finalize_task(
 
         # Check if branch has any commits ahead of main
         proc = await asyncio.create_subprocess_exec(
-            "git", "log", "origin/main..HEAD", "--oneline",
+            "git",
+            "log",
+            "origin/main..HEAD",
+            "--oneline",
             cwd=ctx.working_dir,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -1403,9 +1570,7 @@ async def _finalize_task(
 
         github.merge_pr(repo_name, pr.number)
         LOG.info("✅ Merged PR #%d", pr.number)
-        await emitter.emit_log(
-            task.id, f"✅ Merged PR #{pr.number}", "success"
-        )
+        await emitter.emit_log(task.id, f"✅ Merged PR #{pr.number}", "success")
 
         if task.issue_number:
             github.close_issue(repo_name, task.issue_number)
@@ -1457,17 +1622,11 @@ def _auto_cleanup_sub_issues(
     try:
         repo = github.get_repo(repo_name)
         label = f"issue-{parent_issue}"
-        for issue in repo.get_issues(
-            state="open", labels=["auto-generated", label]
-        ):
+        for issue in repo.get_issues(state="open", labels=["auto-generated", label]):
             issue.edit(state="closed", state_reason="completed")
-        for issue in github.find_needs_human_issues(
-            repo_name, parent_issue
-        ):
+        for issue in github.find_needs_human_issues(repo_name, parent_issue):
             issue.edit(state="closed", state_reason="completed")
-        LOG.info(
-            "🧹 Auto-closed sub-issues for #%d", parent_issue
-        )
+        LOG.info("🧹 Auto-closed sub-issues for #%d", parent_issue)
     except Exception as exc:
         LOG.warning(
             "Could not auto-close sub-issues for #%d: %s",
@@ -2127,7 +2286,8 @@ def _analyze_failure(test_output: str) -> str | None:
         import re
 
         match = re.search(
-            r"TypeError: ([^\n]+)", test_output,
+            r"TypeError: ([^\n]+)",
+            test_output,
         )
         detail = match.group(1) if match else ""
         return f"Type error: {detail}. Check function signatures match contracts.md."
@@ -2137,7 +2297,8 @@ def _analyze_failure(test_output: str) -> str | None:
         import re
 
         match = re.search(
-            r"AttributeError: ([^\n]+)", test_output,
+            r"AttributeError: ([^\n]+)",
+            test_output,
         )
         detail = match.group(1) if match else ""
         return f"Attribute error: {detail}. Check class/module API matches contracts."

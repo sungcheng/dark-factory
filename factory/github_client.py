@@ -164,6 +164,68 @@ class GitHubClient:
 
         return closed_count
 
+    def cleanup_orphaned_issues(self, repo_name: str) -> int:
+        """Close all dark-factory sub-issues whose parent issue is closed.
+
+        Runs at job start to clean up leftovers from previous failed or
+        killed runs.  Returns the number of issues closed.
+        """
+        repo = self.get_repo(repo_name)
+        closed_count = 0
+        seen_parents: dict[int, bool] = {}  # parent_num → is_closed
+
+        for label_name in ("auto-generated", "needs-human"):
+            try:
+                issues = list(
+                    repo.get_issues(state="open", labels=["dark-factory", label_name])
+                )
+            except Exception:
+                continue
+
+            for issue in issues:
+                parent_num = self._extract_parent_number(issue)
+                if parent_num is None:
+                    continue
+
+                # Cache parent state lookups
+                if parent_num not in seen_parents:
+                    try:
+                        parent = repo.get_issue(parent_num)
+                        seen_parents[parent_num] = parent.state == "closed"
+                    except Exception:
+                        seen_parents[parent_num] = False
+
+                if seen_parents[parent_num]:
+                    issue.edit(state="closed", state_reason="not_planned")
+                    LOG.info(
+                        "🧹 Closed orphaned #%d: %s (parent #%d closed)",
+                        issue.number,
+                        issue.title,
+                        parent_num,
+                    )
+                    closed_count += 1
+
+        return closed_count
+
+    @staticmethod
+    def _extract_parent_number(issue: Issue) -> int | None:
+        """Extract parent issue number from a sub-issue body."""
+        body = issue.body or ""
+        for line in body.split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("Parent: #"):
+                try:
+                    return int(stripped.replace("Parent: #", "").strip())
+                except ValueError:
+                    pass
+            if "Original issue" in line and "#" in line:
+                try:
+                    part = line.split("#")[1].split()[0].strip()
+                    return int(part)
+                except (ValueError, IndexError):
+                    pass
+        return None
+
     def protect_main_branch(self, repo_name: str) -> None:
         """Enable branch protection on main.
 

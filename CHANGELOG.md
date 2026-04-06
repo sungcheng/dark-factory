@@ -13,6 +13,7 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Adaptive model selection** — Architect tags tasks with complexity (`simple`/`medium`/`complex`). Developer model auto-selected: haiku for scaffolding, sonnet for standard features, opus for complex logic.
 - **Smart failure analysis** — analyzes test output for common errors (ImportError, SyntaxError, TypeError, AttributeError, FileNotFoundError) and writes targeted feedback directly, skipping QA review agent spawn for obvious fixes.
 - **Combined contracts+tests** — single QA agent writes both `contracts.md` and failing tests in one spawn, eliminating a separate haiku contracts agent per task.
+- **Automatic orphan cleanup** — on job start, closes all open sub-issues whose parent issue is already closed (from previous failed/killed runs). Also cleans up sub-issues on job failure, not just success.
 
 ### Changed
 - Developer default model changed from opus to sonnet (adaptive model picks per-task based on complexity)
@@ -20,6 +21,7 @@ This project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Task finalization (push/PR/merge) extracted into `_finalize_task()` for reuse across sequential and parallel paths
 - `TaskInfo` gains `complexity` field (default: "medium")
 - Planner prompt updated with complexity tagging guidelines and examples
+- `cleanup` CLI command now reuses `GitHubClient.cleanup_orphaned_issues()` instead of duplicating logic
 
 ## [0.4.0] - 2026-04-05
 
