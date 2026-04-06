@@ -1219,7 +1219,7 @@ async def _process_batch_with_worktrees(
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
             LOG.warning(
-                "Rebase failed for %s — aborting and retrying with merge",
+                "Rebase failed for %s — recreating branch from main",
                 task_branch,
             )
             await asyncio.create_subprocess_exec(
@@ -1228,13 +1228,44 @@ async def _process_batch_with_worktrees(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
+            # Get the task's commits (not on origin/main)
             proc = await asyncio.create_subprocess_exec(
-                "git", "merge", "origin/main", "--no-edit",
+                "git", "log", "origin/main..HEAD",
+                "--format=%H", "--reverse",
                 cwd=wt_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await proc.communicate()
+            stdout, _ = await proc.communicate()
+            commits = stdout.decode().strip().splitlines()
+
+            # Reset to origin/main and cherry-pick commits
+            await asyncio.create_subprocess_exec(
+                "git", "reset", "--hard", "origin/main",
+                cwd=wt_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            for commit_hash in commits:
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "cherry-pick", commit_hash,
+                    cwd=wt_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                if proc.returncode != 0:
+                    # Skip conflicting commit, accept theirs
+                    await asyncio.create_subprocess_exec(
+                        "git", "cherry-pick", "--abort",
+                        cwd=wt_dir,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    LOG.warning(
+                        "Skipped conflicting commit %s for %s",
+                        commit_hash[:8], task_branch,
+                    )
 
         wt_ctx = JobContext(
             repo_name=ctx.repo_name,
