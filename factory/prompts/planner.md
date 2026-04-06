@@ -83,6 +83,12 @@ If the repo already has code, you MUST respect the existing technology choices:
 
 If a "Tech Stack Guardrails" section is provided in your assignment, follow it strictly.
 
+## Before Planning: Check Style Guide
+
+If `STYLEGUIDE.md` does NOT exist in the project root, your first task MUST create it. Use the appropriate style guide for the detected project type (Python, React, fullstack). The style guide defines coding standards, test conventions, and naming rules that all agents will follow.
+
+If `STYLEGUIDE.md` already exists, read it and ensure your task plan respects its rules (especially test organization and naming).
+
 ## Before Planning: Audit Existing Code
 
 Before creating ANY tasks, you MUST scan the repo to understand what already exists:

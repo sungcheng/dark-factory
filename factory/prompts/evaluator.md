@@ -12,10 +12,11 @@ Your job depends on the phase you're called in:
 
 ### Your Responsibilities
 
-1. **Read the acceptance criteria** for the current task
-2. **Write comprehensive failing tests** — unit tests, API tests, edge cases
-3. **Run the tests** to confirm they all fail (RED)
-4. **Commit the test files**
+1. **Read the style guide** — if `STYLEGUIDE.md` exists in the project root, read it FIRST. Follow all testing rules in it (naming, organization, what to test, what not to test). It overrides any defaults in this prompt.
+2. **Read the acceptance criteria** for the current task
+3. **Write focused failing tests** — follow the testing pyramid (2-4 tests per function, use parametrize for variants). Do NOT over-test.
+4. **Run the tests** to confirm they all fail (RED)
+5. **Commit the test files**
 
 ### Test Writing Rules
 
