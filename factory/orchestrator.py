@@ -1740,6 +1740,35 @@ async def _finalize_task(
                 "success",
             )
         else:
+            # Wait for CI checks before merging
+            ci_ok = await _wait_for_ci(
+                github,
+                repo_name,
+                pr.number,
+                emitter,
+                task.id,
+            )
+            if not ci_ok:
+                # CI failed — don't merge, treat as task failure
+                ci_logs = github.get_ci_failure_logs(repo_name, pr.number)
+                LOG.error(
+                    "❌ CI failed for PR #%d — not merging",
+                    pr.number,
+                )
+                await emitter.emit_log(
+                    task.id,
+                    f"❌ CI failed for PR #{pr.number}",
+                    "failure",
+                )
+                task.status = "failed"
+                # Write CI failure as feedback for retry
+                feedback_path = Path(ctx.working_dir) / "feedback.md"
+                feedback_path.write_text(
+                    f"# CI Failure\n\nPR #{pr.number} CI checks failed.\n\n{ci_logs}\n"
+                )
+                save_state(state)
+                return
+
             github.merge_pr(repo_name, pr.number)
             LOG.info("✅ Merged PR #%d", pr.number)
             await emitter.emit_log(
@@ -1787,6 +1816,57 @@ async def _finalize_task(
             failure_issue.number,
         )
         save_state(state)
+
+
+async def _wait_for_ci(
+    github: GitHubClient,
+    repo_name: str,
+    pr_number: int,
+    emitter: EventEmitter | None = None,
+    task_id: str = "",
+    timeout: int = 600,
+) -> bool:
+    """Poll GitHub every 30s until CI checks complete. Returns True if passed."""
+    poll_count = 0
+    max_polls = timeout // MERGE_POLL_INTERVAL
+
+    # Give CI a moment to start
+    await asyncio.sleep(10)
+
+    while poll_count < max_polls:
+        status, details = github.get_ci_status(repo_name, pr_number)
+
+        if status == "success":
+            LOG.info("  ✅ CI passed for PR #%d", pr_number)
+            if emitter and task_id:
+                await emitter.emit_log(task_id, "✅ CI checks passed")
+            return True
+
+        if status == "failure":
+            LOG.error("  ❌ CI failed for PR #%d: %s", pr_number, details)
+            return False
+
+        if status == "none":
+            LOG.info("  ⏭️ No CI checks configured — proceeding")
+            return True
+
+        # Still pending
+        poll_count += 1
+        if poll_count % 4 == 0:
+            LOG.info(
+                "  ⏳ CI still running for PR #%d (%ds)...",
+                pr_number,
+                poll_count * MERGE_POLL_INTERVAL,
+            )
+            if emitter and task_id:
+                await emitter.emit_log(
+                    task_id,
+                    f"⏳ CI running... ({poll_count * MERGE_POLL_INTERVAL}s)",
+                )
+        await asyncio.sleep(MERGE_POLL_INTERVAL)
+
+    LOG.error("  ⏰ CI timed out for PR #%d after %ds", pr_number, timeout)
+    return False
 
 
 async def _wait_for_merge(

@@ -337,6 +337,67 @@ class GitHubClient:
         pr = repo.get_pull(pr_number)
         pr.merge(merge_method="squash")
 
+    def get_ci_status(
+        self,
+        repo_name: str,
+        pr_number: int,
+    ) -> tuple[str, str]:
+        """Get CI check status for a PR.
+
+        Returns (status, details) where status is one of:
+        - "pending" — checks still running
+        - "success" — all checks passed
+        - "failure" — one or more checks failed
+        - "none" — no CI checks configured
+        """
+        repo = self.get_repo(repo_name)
+        pr = repo.get_pull(pr_number)
+        commit = repo.get_commit(pr.head.sha)
+
+        # Check GitHub Actions (check runs)
+        check_runs = list(commit.get_check_runs())
+        if not check_runs:
+            # No CI configured
+            return "none", "No CI checks found"
+
+        failed: list[str] = []
+        pending: list[str] = []
+        for run in check_runs:
+            if run.status != "completed":
+                pending.append(run.name)
+            elif run.conclusion not in ("success", "skipped", "neutral"):
+                failed.append(f"{run.name}: {run.conclusion}")
+
+        if pending:
+            return "pending", f"Waiting: {', '.join(pending)}"
+        if failed:
+            return "failure", "\n".join(failed)
+        return "success", "All checks passed"
+
+    def get_ci_failure_logs(
+        self,
+        repo_name: str,
+        pr_number: int,
+    ) -> str:
+        """Get failure output from CI check runs."""
+        repo = self.get_repo(repo_name)
+        pr = repo.get_pull(pr_number)
+        commit = repo.get_commit(pr.head.sha)
+
+        logs: list[str] = []
+        for run in commit.get_check_runs():
+            if run.status == "completed" and run.conclusion not in (
+                "success",
+                "skipped",
+                "neutral",
+            ):
+                logs.append(
+                    f"## {run.name} ({run.conclusion})\n"
+                    f"URL: {run.html_url}\n"
+                    f"{run.output.summary if run.output else ''}"
+                )
+        return "\n\n".join(logs) if logs else "No failure details available"
+
     def create_draft_pr(
         self,
         repo_name: str,
