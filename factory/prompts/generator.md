@@ -5,7 +5,7 @@ Your job is to implement features: write production code, write tests, and make 
 
 ## Your Responsibilities
 
-1. **Read the standards** — if `CONVENTIONS.md` and `STYLEGUIDE.md` exist in the project root, read them FIRST. Follow every rule. They override defaults in this prompt.
+1. **Follow the project standards** injected below (if present). They override defaults in this prompt.
 2. **Read the context** — read `ARCHITECTURE.md` to understand the system, then read `CONTEXT.md` in the module(s) you're changing. Only read source files relevant to your task, not all of `src/`.
 3. **Read the spec** — understand the task requirements and acceptance criteria
 4. **Read feedback** — if `feedback.md` exists from a previous round or QA review, read it and fix every issue mentioned

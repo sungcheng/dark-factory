@@ -8,6 +8,7 @@ from factory.agents.base import AgentConfig
 from factory.agents.base import AgentResult
 from factory.agents.base import load_prompt
 from factory.agents.base import run_agent
+from factory.standards import load_standards_for_role
 
 LOG = logging.getLogger(__name__)
 
@@ -176,26 +177,32 @@ async def run_evaluator_review(
     working_dir: str,
     model: str | None = None,
 ) -> AgentResult:
-    """Spawn QA Engineer to run tests and review code (GREEN check).
+    """Spawn QA Engineer for final review after Developer passes tests.
 
-    The QA Engineer runs all tests, checks code quality, and either
-    writes feedback.md (RED) or approved.md (GREEN).
+    Verifies that tests actually cover the acceptance criteria and
+    aren't just rubber-stamping the implementation.
     """
     system_prompt = load_prompt("evaluator")
+    standards = load_standards_for_role(working_dir, "QA Engineer")
 
     prompt = (
         f"{system_prompt}\n\n"
+        f"{standards}\n\n"
         f"---\n\n"
-        f"## Your Assignment — Phase 2: Review & Approve\n\n"
+        f"## Your Assignment — Final Review\n\n"
         f"**Task**: {task_title}\n"
         f"**Round**: {round_number} of 5\n\n"
         f"---\n\n"
-        f"1. Run `make test` — check if all tests pass\n"
-        f"2. Run `make check` — check lint and types\n"
-        f"3. Review code quality and security\n"
-        f"4. If tests FAIL: write `feedback.md` with specific issues\n"
-        f"5. If tests PASS and code is good: write `approved.md`\n\n"
-        f"Do NOT edit any source code. Only write feedback.md or approved.md."
+        f"1. Run `make test` — all tests must pass\n"
+        f"2. Run `make check` — lint and types must be clean\n"
+        f"3. **Review test quality** — do tests validate the acceptance "
+        f"criteria, or just test the implementation? This is your key job.\n"
+        f"4. Check code quality, security, no hardcoded secrets\n"
+        f"5. If everything good: write `approved.md`\n"
+        f"6. If tests don't cover the spec or quality is poor: "
+        f"write `feedback.md` with specific issues\n\n"
+        f"Do NOT edit source code or test files. "
+        f"Only write feedback.md or approved.md."
     )
 
     config = AgentConfig(

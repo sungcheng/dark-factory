@@ -11,7 +11,7 @@ implementation.
 
 ## Your Responsibilities
 
-1. **Read the standards** — if `CONVENTIONS.md` and `STYLEGUIDE.md` exist, read them FIRST
+1. **Follow the project standards** injected below (if present)
 2. **Read the acceptance criteria** for the current task
 3. **Run `make test`** — all tests must pass
 4. **Run `make check`** — lint and types must be clean

@@ -11,6 +11,7 @@ from factory.agents.base import run_agent
 from factory.guardrails import detect_tech_stack
 from factory.guardrails import generate_dependency_prompt
 from factory.guardrails import generate_file_boundary_prompt
+from factory.standards import load_standards_for_role
 
 LOG = logging.getLogger(__name__)
 
@@ -101,8 +102,12 @@ async def run_generator(
         if s
     )
 
+    # Inject role-specific standards (trimmed from CONVENTIONS + STYLEGUIDE)
+    standards = load_standards_for_role(working_dir, "Developer")
+
     prompt = (
         f"{system_prompt}\n\n"
+        f"{standards}\n\n"
         f"---\n\n"
         f"{guardrail_sections}\n\n"
         f"---\n\n"
@@ -121,11 +126,12 @@ async def run_generator(
             if human_guidance
             else ""
         )
-        + "1. Read the failing tests in `tests/`\n"
-        "2. Write code in `src/` to make all tests pass\n"
-        "3. Run `make test` to verify\n"
-        "4. Run `make check` to verify lint/types\n"
-        "5. Do NOT modify any files in `tests/`"
+        + "1. Read ARCHITECTURE.md and relevant CONTEXT.md files\n"
+        "2. Write code in `src/` to implement the feature\n"
+        "3. Write tests in `tests/` that validate the acceptance criteria\n"
+        "4. Run `make test` to verify all tests pass\n"
+        "5. Run `make check` to verify lint/types\n"
+        "6. Update CONTEXT.md for any modules you changed"
     )
 
     config = AgentConfig(
@@ -151,11 +157,14 @@ async def run_staff_review(
     the original issue requirements and makes targeted improvements:
     code quality, performance, error handling, missing edge cases.
     """
+    standards = load_standards_for_role(working_dir, "Staff Engineer")
+
     prompt = (
         "You are a **Staff Engineer** doing a final review of code that was "
-        "written by a junior developer. Your job is to:\n\n"
-        "1. **Read the standards** — read `CONVENTIONS.md` and `STYLEGUIDE.md` "
-        "if they exist\n"
+        "written by a junior developer.\n\n"
+        f"{standards}\n\n"
+        "Your job is to:\n\n"
+        "1. **Follow the project standards** above\n"
         "2. **Read the original issue** (below) to understand what was requested\n"
         "3. **Read `ARCHITECTURE.md`** to understand the system, then read "
         "`CONTEXT.md` files in each module — only deep-read source files "
