@@ -689,6 +689,15 @@ async def _run_subtasks_parallel(
         wt_dir = tempfile.mkdtemp(prefix=f"df-wt-{subtask.id}-")
         wt_branch = f"wt-{subtask.id}"
 
+        # Delete stale branch if it exists (from previous runs)
+        proc = await asyncio.create_subprocess_exec(
+            "git", "branch", "-D", wt_branch,
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
         # Create worktree from current branch
         proc = await asyncio.create_subprocess_exec(
             "git", "worktree", "add", "-b", wt_branch, wt_dir,
@@ -1122,6 +1131,15 @@ async def _process_batch_with_worktrees(
     for task in active_tasks:
         wt_dir = tempfile.mkdtemp(prefix=f"df-wt-{task.id}-")
         task_branch = f"factory/issue-{issue_number}/{task.id}"
+
+        # Delete stale branch if it exists (from previous runs)
+        proc = await asyncio.create_subprocess_exec(
+            "git", "branch", "-D", task_branch,
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()  # ignore errors — branch may not exist
 
         proc = await asyncio.create_subprocess_exec(
             "git", "worktree", "add", "-b", task_branch, wt_dir,
