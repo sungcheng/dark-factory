@@ -42,6 +42,7 @@ class TaskInfo:
     issue_number: int | None = None
     status: str = "pending"
     failure_issue: int | None = None
+    rounds_used: int = 0
 
     @property
     def has_subtasks(self) -> bool:

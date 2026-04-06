@@ -411,6 +411,17 @@ async def run_job(
             # Auto-cleanup: close all sub-issues for this parent
             _auto_cleanup_sub_issues(github, repo_name, issue_number)
 
+            # Health report
+            health = _compute_health_report(ctx.tasks, job_tag)
+            LOG.info("📊 Health Report:\n%s", health["summary"])
+            await emitter.emit_log(
+                job_tag,
+                f"📊 Health: {health['grade']} — "
+                f"avg {health['avg_rounds']:.1f} rounds/task, "
+                f"{health['max_round_tasks']} task(s) hit max rounds",
+                str(health["status"]),
+            )
+
             await emitter.emit_log(
                 job_tag,
                 f"✅ All {len(completed)} tasks complete. "
@@ -1048,6 +1059,7 @@ async def _process_task(
                 await emitter.emit_task_completed(task.id)
                 await emitter.emit_agent_exited(task.id, "Developer", success=True)
             task.status = "completed"
+            task.rounds_used = round_num
             await _commit_task(ctx, task)
             if task.issue_number:
                 github.close_issue(ctx.repo_name, task.issue_number)
@@ -1100,6 +1112,7 @@ async def _process_task(
                 await emitter.emit_task_completed(task.id)
                 await emitter.emit_agent_exited(task.id, "Developer", success=True)
             task.status = "completed"
+            task.rounds_used = round_num
             await _commit_task(ctx, task)
             if task.issue_number:
                 github.close_issue(ctx.repo_name, task.issue_number)
@@ -1682,6 +1695,65 @@ async def _cleanup_df_artifacts(ctx: JobContext) -> None:
             len(removed),
             ", ".join(removed),
         )
+
+
+def _compute_health_report(
+    tasks: list[TaskInfo],
+    job_tag: str,
+) -> dict[str, object]:
+    """Compute a health report for a completed job.
+
+    Tracks rounds-to-green as the primary signal of AI degradation.
+    """
+    completed = [t for t in tasks if t.status in ("completed", "success")]
+    failed = [t for t in tasks if t.status == "failed"]
+
+    rounds = [t.rounds_used for t in completed if t.rounds_used > 0]
+    avg_rounds = sum(rounds) / len(rounds) if rounds else 0
+    max_round_tasks = sum(1 for r in rounds if r >= MAX_ROUNDS)
+    struggled = sum(1 for r in rounds if r >= 3)
+
+    # Grade: A (smooth), B (some friction), C (struggling), F (broken)
+    if max_round_tasks > 0 or len(failed) > 0:
+        grade = "C" if max_round_tasks <= 1 else "F"
+    elif avg_rounds > 2.5 or struggled > len(completed) * 0.3:
+        grade = "C"
+    elif avg_rounds > 1.5 or struggled > 0:
+        grade = "B"
+    else:
+        grade = "A"
+
+    status = "success" if grade in ("A", "B") else "warning"
+    if grade == "F":
+        status = "failure"
+
+    lines = [
+        f"Job: {job_tag}",
+        f"Grade: {grade}",
+        f"Tasks: {len(completed)} completed, {len(failed)} failed",
+        f"Avg rounds/task: {avg_rounds:.1f}",
+        f"Tasks hitting max rounds: {max_round_tasks}",
+        f"Tasks needing 3+ rounds: {struggled}",
+    ]
+
+    if grade in ("C", "F"):
+        lines.append(
+            "⚠️  AI agents are struggling. Consider: smaller tasks, "
+            "better CONTEXT.md files, or simpler codebase structure."
+        )
+
+    for t in completed:
+        if t.rounds_used >= 3:
+            lines.append(f"  ⚠️  {t.id} ({t.title}): {t.rounds_used} rounds")
+
+    return {
+        "grade": grade,
+        "avg_rounds": avg_rounds,
+        "max_round_tasks": max_round_tasks,
+        "struggled": struggled,
+        "status": status,
+        "summary": "\n".join(lines),
+    }
 
 
 def _auto_cleanup_sub_issues(
