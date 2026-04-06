@@ -12,7 +12,7 @@ Autonomous AI coding pipeline — you write the spec, AI builds, tests, and depl
 6. Developer retries on failure (max 5 rounds — debug/bisect triggers at round 3+)
 7. Migration tasks use a sequential chain: generate → models → backfill → verify
 8. Each completed task gets its own PR, merged to main immediately
-9. **Post-job skills** run: doc sync, dead code sweep, PR polish
+9. **Post-job skills** run: doc sync, dead code sweep, PR polish, version bump
 10. **QA Lead** (opus) does a holistic review of the full implementation
 11. Failed tasks get draft PRs + needs-human issues for retry
 

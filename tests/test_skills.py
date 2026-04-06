@@ -30,6 +30,8 @@ from factory.skills.registry import run_skill
 from factory.skills.scaffold import Scaffold
 from factory.skills.standards_bootstrap import StandardsBootstrap
 from factory.skills.standards_bootstrap import _detect_project_type
+from factory.skills.version_bump import VersionBump
+from factory.skills.version_bump import _determine_bump
 
 
 def _run(coro):  # type: ignore[no-untyped-def]
@@ -79,6 +81,7 @@ class TestSkillRegistry:
             "health_check",
             "cleanup",
             "rollback",
+            "version_bump",
         }
         actual = set(_REGISTRY.keys())
         assert expected.issubset(actual), f"Missing: {expected - actual}"
@@ -117,11 +120,12 @@ class TestSkillRegistry:
         }
 
         post_job = list_skills(SkillPhase.POST_JOB)
-        assert len(post_job) == 3
+        assert len(post_job) == 4
         assert {s.name for s in post_job} == {
             "doc_sync",
             "dead_code_sweep",
             "pr_polish",
+            "version_bump",
         }
 
         on_demand = list_skills(SkillPhase.ON_DEMAND)
@@ -401,3 +405,23 @@ class TestCostTracking:
         assert cost.output_tokens == 0
         assert cost.cost_usd == 0.0
         assert cost.total_tokens == 0
+
+
+class TestVersionBump:
+    """Tests for version bump skill."""
+
+    def test_determine_bump_major(self) -> None:
+        commits = ["feat!: breaking change", "fix: something"]
+        assert _determine_bump(commits) == "major"
+
+    def test_determine_bump_minor(self) -> None:
+        commits = ["feat: new feature", "fix: something"]
+        assert _determine_bump(commits) == "minor"
+
+    def test_determine_bump_patch(self) -> None:
+        commits = ["fix: bug fix", "chore: cleanup"]
+        assert _determine_bump(commits) == "patch"
+
+    def test_determine_bump_default_patch(self) -> None:
+        commits = ["update something", "random message"]
+        assert _determine_bump(commits) == "patch"

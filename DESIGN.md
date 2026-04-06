@@ -528,7 +528,7 @@ Reusable capabilities invoked at specific lifecycle points. Each skill is a clas
 |---|---|---|
 | **PRE_JOB** | Before any tasks start | Standards Bootstrap, Dependency Audit, Codebase Profile |
 | **PER_TASK** | During task processing | Migration Chain, Scaffold, Debug/Bisect |
-| **POST_JOB** | After all tasks complete | Doc Sync, Dead Code Sweep, PR Polish |
+| **POST_JOB** | After all tasks complete | Doc Sync, Dead Code Sweep, PR Polish, Version Bump |
 | **ON_DEMAND** | Triggered manually | Health Check, Cleanup, Rollback |
 
 ### Pre-Job Skills
@@ -545,6 +545,7 @@ Reusable capabilities invoked at specific lifecycle points. Each skill is a clas
 - **Doc Sync** — updates ARCHITECTURE.md, CONTEXT.md, CHANGELOG.md after all tasks merge. Haiku agent reads changed files and updates docs.
 - **Dead Code Sweep** — runs ruff (Python) and eslint (TS) for unused imports/variables. Auto-fixes F401 (unused imports). Finds orphaned test files.
 - **PR Polish** — analyzes commit history for bad messages, duplicates, excessive commits. Advisory report only (no history rewriting).
+- **Version Bump** — reads conventional commit messages since the last tag, determines bump type (major/minor/patch), updates version in pyproject.toml or package.json, writes CHANGELOG.md entry, and creates a git tag. Does not push.
 
 ### On-Demand Skills
 - **Health Check** — generates A-F health report from saved state. Same grading as post-job report but callable anytime.

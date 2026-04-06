@@ -26,6 +26,7 @@ from factory.skills.registry import run_skill
 from factory.skills.rollback import Rollback
 from factory.skills.scaffold import Scaffold
 from factory.skills.standards_bootstrap import StandardsBootstrap
+from factory.skills.version_bump import VersionBump
 
 # Register all built-in skills
 for _skill_cls in [
@@ -42,6 +43,7 @@ for _skill_cls in [
     HealthCheck,
     Cleanup,
     Rollback,
+    VersionBump,
 ]:
     register_skill(_skill_cls())
 
