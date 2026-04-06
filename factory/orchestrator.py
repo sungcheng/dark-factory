@@ -722,6 +722,9 @@ async def _run_subtasks_parallel(
         if claude_md.exists():
             shutil.copy2(claude_md, Path(wt_dir) / "CLAUDE.md")
 
+        # Install frontend deps in worktree if needed
+        await _install_frontend_deps(wt_dir)
+
         worktrees.append((subtask, wt_dir, wt_branch))
         LOG.info("  🌳 Worktree for %s: %s", subtask.id, wt_dir)
 
@@ -1166,6 +1169,9 @@ async def _process_batch_with_worktrees(
         claude_md = Path(ctx.working_dir) / "CLAUDE.md"
         if claude_md.exists():
             shutil.copy2(claude_md, Path(wt_dir) / "CLAUDE.md")
+
+        # Install frontend deps in worktree if needed
+        await _install_frontend_deps(wt_dir)
 
         worktree_info.append((task, wt_dir, task_branch))
 
@@ -2043,6 +2049,14 @@ def _analyze_failure(test_output: str) -> str | None:
             )
         if "ruff" in output_lower:
             return "ruff lint failures. Run 'ruff check --fix' patterns."
+
+    # Missing commands / environment issues
+    if "command not found" in output_lower or "not found" in output_lower:
+        return (
+            "Environment issue: a required command or package is missing. "
+            "Check that all dependencies are installed (npm install, "
+            "uv sync, etc.)."
+        )
 
     # Complex failure — let QA handle it
     return None
