@@ -43,7 +43,8 @@ Write a `tasks.json` file in the project root with this structure:
       "CI config exists"
     ],
     "depends_on": [],
-    "complexity": "simple"
+    "complexity": "simple",
+    "type": "feature"
   },
   {
     "id": "task-2",
@@ -54,10 +55,27 @@ Write a `tasks.json` file in the project root with this structure:
       "Testable criterion 2"
     ],
     "depends_on": ["task-1"],
-    "complexity": "medium"
+    "complexity": "medium",
+    "type": "feature"
   }
 ]
 ```
+
+## Task Type
+
+Tag each task with a `type` field. This determines which execution strategy the orchestrator uses:
+
+| Type | Strategy | Use when |
+|---|---|---|
+| `feature` | Standard red-green loop | Default. New features, most tasks |
+| `migration` | Sequential chain: generate migration → update models → backfill → verify | Database schema changes, ORM migrations |
+| `refactor` | Standard red-green loop | Code restructuring, renaming, moving files |
+| `api_route` | Scaffold first, then red-green | Adding a new API endpoint |
+| `model` | Scaffold first, then red-green | Adding a new data model/schema |
+| `component` | Scaffold first, then red-green | Adding a new frontend component |
+| `service` | Scaffold first, then red-green | Adding a new backend service/module |
+
+Default is `feature` if omitted. Migration tasks MUST use `migration` type — the chain ensures migrations, models, and backfills stay in sync.
 
 ## Task Complexity
 

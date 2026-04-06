@@ -5,15 +5,16 @@ Autonomous AI coding pipeline — you write the spec, AI builds, tests, and depl
 ## How It Works
 
 1. You create a GitHub Issue with requirements
-2. **Architect** (opus) reads the issue, breaks it into tasks with dependencies
-3. **QA Engineer** writes interface contracts, then failing tests (RED)
-4. **Developer** (opus) scaffolds from contracts, then makes tests pass (GREEN)
-5. Tests run directly — if they pass, instant approve. If they fail, QA writes feedback
-6. Developer retries (max 5 rounds per task)
-7. Each completed task gets its own PR, merged to main immediately
-8. Failed tasks get draft PRs + needs-human issues for retry
-
-No agent grades its own work. The Developer cannot touch test files. The QA Engineer cannot touch source files.
+2. **Pre-job skills** run: standards bootstrap, dependency audit, codebase profiling
+3. **Architect** (opus) reads the issue, breaks it into typed tasks with dependencies
+4. **Developer** writes code + tests, makes them pass (GREEN)
+5. **QA Engineer** reviews test quality on medium/complex tasks (simple tasks skip QA)
+6. Developer retries on failure (max 5 rounds — debug/bisect triggers at round 3+)
+7. Migration tasks use a sequential chain: generate → models → backfill → verify
+8. Each completed task gets its own PR, merged to main immediately
+9. **Post-job skills** run: doc sync, dead code sweep, PR polish
+10. **QA Lead** (opus) does a holistic review of the full implementation
+11. Failed tasks get draft PRs + needs-human issues for retry
 
 ## Prerequisites
 

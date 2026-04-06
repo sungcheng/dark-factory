@@ -27,6 +27,10 @@ from factory.guardrails import format_secret_findings
 from factory.guardrails import run_preflight_checks
 from factory.guardrails import verify_test_count_not_decreased
 from factory.security import write_security_policy
+from factory.skills import SkillContext
+from factory.skills import SkillPhase
+from factory.skills import run_phase
+from factory.skills import run_skill
 from factory.state import JobState
 from factory.state import cleanup_stale_state_files
 from factory.state import load_state
@@ -130,6 +134,19 @@ async def run_job(
     tech_stack = preflight.tech_stack
     LOG.info("🔍 Tech stack: %s", tech_stack.summary())
     await emitter.emit_log(job_tag, f"🔍 Tech stack: {tech_stack.summary()}")
+
+    # Run pre-job skills (standards bootstrap, dependency audit, codebase profile)
+    skill_ctx = SkillContext(
+        working_dir=ctx.working_dir,
+        repo_name=repo_name,
+        issue_number=issue_number,
+        model=model,
+    )
+    pre_results = await run_phase(SkillPhase.PRE_JOB, skill_ctx)
+    for sr in pre_results:
+        if sr.files_created:
+            LOG.info("🔧 Skill: %s", sr.message)
+            await emitter.emit_log(job_tag, f"🔧 {sr.message}")
 
     # Count tests before any changes (for regression scope guard)
     pre_job_test_count = await count_tests(ctx.working_dir)
@@ -400,6 +417,52 @@ async def run_job(
                         "✅ QA Lead: code is clean",
                         "success",
                     )
+
+            # Run post-job skills (doc sync, dead code sweep, PR polish)
+            post_ctx = SkillContext(
+                working_dir=ctx.working_dir,
+                repo_name=repo_name,
+                issue_number=issue_number,
+                model=model,
+            )
+            post_results = await run_phase(SkillPhase.POST_JOB, post_ctx)
+            for sr in post_results:
+                if sr.message and sr.message != "No dead code found":
+                    LOG.info("🔧 Post-job: %s", sr.message)
+                    await emitter.emit_log(job_tag, f"🔧 {sr.message}")
+
+            # Commit any post-job skill changes
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "add",
+                "-A",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                cwd=ctx.working_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+            if proc.returncode != 0:
+                proc = await asyncio.create_subprocess_exec(
+                    "git",
+                    "commit",
+                    "-m",
+                    "chore: post-job skill updates (docs, cleanup)",
+                    cwd=ctx.working_dir,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                await _push_changes(ctx)
 
             await emitter.emit_job_completed(repo_name, issue_number)
             github.close_issue(repo_name, issue_number)
@@ -990,6 +1053,46 @@ async def _process_task(
         save_state(state)
         return
 
+    # Migration tasks use the chain skill instead of normal red-green
+    if task.task_type == "migration":
+        LOG.info("  🔗 Migration task — using chain skill")
+        if emitter:
+            await emitter.emit_log(task.id, "🔗 Running migration chain...")
+        chain_ctx = SkillContext(
+            working_dir=ctx.working_dir,
+            repo_name=ctx.repo_name,
+            issue_number=ctx.issue_number,
+            model=effective_model,
+            task_id=task.id,
+            task_title=task.title,
+            task_type=task.task_type,
+        )
+        chain_result = await run_skill("migration_chain", chain_ctx)
+        if chain_result.success:
+            passed, _ = await _run_tests_with_check(ctx.working_dir)
+            if passed:
+                if emitter:
+                    await emitter.emit_task_completed(task.id)
+                task.status = "completed"
+                task.rounds_used = 1
+                await _commit_task(ctx, task)
+                if task.issue_number:
+                    github.close_issue(ctx.repo_name, task.issue_number)
+                save_state(state)
+                return
+        # Chain failed — fall through to normal red-green loop
+        LOG.warning("  ⚠️ Migration chain failed — falling back to red-green")
+
+    # Scaffold tasks get a head start
+    if task.task_type in ("api_route", "model", "component", "service"):
+        scaffold_ctx = SkillContext(
+            working_dir=ctx.working_dir,
+            task_title=task.title,
+            task_type=task.task_type,
+            model="haiku",
+        )
+        await run_skill("scaffold", scaffold_ctx)
+
     # Developer builds feature: code + tests + make it pass
     # No separate QA test-writing phase. Developer owns both.
     # QA only runs once at the end for final review.
@@ -1112,6 +1215,23 @@ async def _process_task(
 
         # Tests failed — write test output as feedback for next round
         # No QA agent needed. Developer reads the output directly.
+        # At round 3+: trigger debug/bisect for systematic diagnosis
+        if round_num >= 3:
+            LOG.info("    🔬 Round %d — triggering debug/bisect", round_num)
+            if emitter:
+                await emitter.emit_log(
+                    task.id,
+                    f"🔬 Round {round_num} — running debug diagnosis...",
+                )
+            debug_ctx = SkillContext(
+                working_dir=ctx.working_dir,
+                task_id=task.id,
+                task_title=task.title,
+                round_number=round_num,
+                model=effective_model,
+            )
+            await run_skill("debug_bisect", debug_ctx)
+
         feedback_path = Path(ctx.working_dir) / "feedback.md"
         failure_hint = _analyze_failure(test_output)
 
@@ -1818,6 +1938,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
                 depends_on=t.get("depends_on", []),
                 subtasks=subtasks,
                 complexity=t.get("complexity", "medium"),
+                task_type=t.get("type", "feature"),
             )
         )
 

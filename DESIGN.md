@@ -518,6 +518,50 @@ Clone repo → detect tech stack → scan for secrets → check dependencies
 Run regression gate → start tasks
 ```
 
+## 10.6. Skills System (`factory/skills/`)
+
+Reusable capabilities invoked at specific lifecycle points. Each skill is a class with `should_run()` (conditional) and `run()` (execution).
+
+### Skill Phases
+
+| Phase | When | Skills |
+|---|---|---|
+| **PRE_JOB** | Before any tasks start | Standards Bootstrap, Dependency Audit, Codebase Profile |
+| **PER_TASK** | During task processing | Migration Chain, Scaffold, Debug/Bisect |
+| **POST_JOB** | After all tasks complete | Doc Sync, Dead Code Sweep, PR Polish |
+| **ON_DEMAND** | Triggered manually | Health Check, Cleanup, Rollback |
+
+### Pre-Job Skills
+- **Standards Bootstrap** — creates CONVENTIONS.md, STYLEGUIDE.md, CI workflow if missing. Detects project type (Python/React/fullstack) and copies the right templates.
+- **Dependency Audit** — runs pip-audit (Python) and npm audit (Node) to flag vulnerabilities. Advisory only, doesn't block.
+- **Codebase Profile** — spawns haiku agent to generate ARCHITECTURE.md and per-module CONTEXT.md. Only runs on cold-start (no existing ARCHITECTURE.md).
+
+### Per-Task Skills
+- **Migration Chain** — sequential pipeline: generate migration → update models → write backfill → verify. Triggered when `task_type == "migration"`. Replaces the normal red-green loop.
+- **Scaffold** — generates boilerplate for `api_route`, `model`, `component`, `service` task types. Haiku agent reads existing patterns and creates stubs before the Developer starts.
+- **Debug/Bisect** — triggers at round 3+ when Developer keeps failing. Spawns a sonnet agent to diagnose root cause systematically instead of "try harder". Writes diagnosis to feedback.md.
+
+### Post-Job Skills
+- **Doc Sync** — updates ARCHITECTURE.md, CONTEXT.md, CHANGELOG.md after all tasks merge. Haiku agent reads changed files and updates docs.
+- **Dead Code Sweep** — runs ruff (Python) and eslint (TS) for unused imports/variables. Auto-fixes F401 (unused imports). Finds orphaned test files.
+- **PR Polish** — analyzes commit history for bad messages, duplicates, excessive commits. Advisory report only (no history rewriting).
+
+### On-Demand Skills
+- **Health Check** — generates A-F health report from saved state. Same grading as post-job report but callable anytime.
+- **Cleanup** — wraps existing orphan issue/PR/state cleanup into one callable unit.
+- **Rollback** — reverts a task: closes PRs, deletes branch, reverts merge commit, resets task state to pending.
+
+### Task Types
+
+The Architect tags each task with a `type` field that determines execution strategy:
+
+| Type | Strategy |
+|---|---|
+| `feature` (default) | Normal red-green loop |
+| `migration` | Migration chain skill |
+| `api_route`, `model`, `component`, `service` | Scaffold first, then red-green |
+| `refactor` | Normal red-green loop |
+
 ## 11. Multi-Project Strategy
 
 The dark-factory repo is the **mother ship**. Each project it builds gets its own repo.
