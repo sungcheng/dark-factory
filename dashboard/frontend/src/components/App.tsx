@@ -48,11 +48,6 @@ function groupByRepo(jobs: JobSummary[]): RepoGroup[] {
 
   const groups: RepoGroup[] = [];
   for (const [repo_name, repoJobs] of map) {
-    const task_count = repoJobs.reduce((s, j) => s + j.task_count, 0);
-    const completed_task_count = repoJobs.reduce(
-      (s, j) => s + j.completed_task_count,
-      0,
-    );
     // Derive aggregate status: in_progress > failed > completed > pending
     let status = "completed";
     if (repoJobs.some((j) => j.status === "in_progress")) {
@@ -64,6 +59,14 @@ function groupByRepo(jobs: JobSummary[]): RepoGroup[] {
     } else {
       status = "pending";
     }
+    // Only count tasks from active jobs (not historical completed ones)
+    const activeJobs = repoJobs.filter((j) => j.status === "in_progress");
+    const countFrom = activeJobs.length > 0 ? activeJobs : repoJobs;
+    const task_count = countFrom.reduce((s, j) => s + j.task_count, 0);
+    const completed_task_count = countFrom.reduce(
+      (s, j) => s + j.completed_task_count,
+      0,
+    );
     groups.push({ repo_name, jobs: repoJobs, status, task_count, completed_task_count });
   }
   return groups;
