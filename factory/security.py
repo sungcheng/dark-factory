@@ -131,6 +131,14 @@ DF_ARTIFACTS: list[str] = [
     "contracts.*.md",
     "feedback.md",
     "approved.md",
+    "regression-pass.md",
+    "regression-fail.md",
+    "context-validation.md",
+    "dependency-audit.md",
+    "debug-diagnosis.md",
+    "pr-polish-report.md",
+    "no-backfill-needed.md",
+    "migration-verified.md",
 ]
 
 

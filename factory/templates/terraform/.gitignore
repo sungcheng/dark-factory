@@ -11,3 +11,16 @@ override.tf.json
 .terraformrc
 terraform.rc
 .env
+
+# Dark Factory artifacts
+tasks.json
+contracts.md
+contracts.*.md
+feedback.md
+approved.md
+regression-pass.md
+regression-fail.md
+context-validation.md
+dependency-audit.md
+debug-diagnosis.md
+pr-polish-report.md

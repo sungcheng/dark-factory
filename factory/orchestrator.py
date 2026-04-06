@@ -1041,24 +1041,11 @@ async def _process_task(
     if emitter:
         await emitter.emit_task_started(task.id)
 
-    # Pre-check: feature might already exist (resumed job, previous run)
-    pre_passed, _ = await _run_tests_with_check(ctx.working_dir)
-    if pre_passed:
-        LOG.info("  ⏭️ Tests already pass — feature exists, skipping Developer")
-        if emitter:
-            await emitter.emit_log(
-                task.id,
-                "⏭️ Tests already pass — skipping Developer",
-                "success",
-            )
-            await emitter.emit_round_result(task.id, 0, passed=True)
-            await emitter.emit_task_completed(task.id)
-        task.status = "completed"
-        await _commit_task(ctx, task)
-        if task.issue_number:
-            github.close_issue(ctx.repo_name, task.issue_number)
-        save_state(state)
-        return
+    # NOTE: We used to pre-check "tests already pass → skip Developer"
+    # but that was wrong — passing tests don't mean the TASK's feature
+    # exists. A scaffold health test passes before any real code is
+    # written. Skip logic now lives in _process_single_task_in_batch
+    # via _is_task_already_done (checks git history for the task).
 
     # Migration tasks use the chain skill instead of normal red-green
     if task.task_type == "migration":
