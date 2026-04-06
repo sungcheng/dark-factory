@@ -775,8 +775,8 @@ class TestOrchestratorIntegration:
     def test_orchestrator_creates_emitter_in_run_job(self) -> None:
         """run_job() must instantiate EventEmitter (not just define it)."""
         source = self._get_orchestrator_source()
-        # Check that EventEmitter() is called somewhere in the source
-        assert "EventEmitter()" in source, (
+        # Check that EventEmitter is instantiated somewhere in the source
+        assert "EventEmitter(" in source, (
             "run_job() does not instantiate EventEmitter(). "
             "An emitter must be created at the start of the job."
         )

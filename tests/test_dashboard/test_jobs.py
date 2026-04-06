@@ -741,7 +741,10 @@ class TestGetJobLogEndpoint:
                 for event_type in ["task_started", "agent_completed", "task_done"]:
                     await db_module.insert_event(
                         EventIn(
-                            task_id=task_id, event_type=event_type, status="pending"
+                            task_id=task_id,
+                            event_type=event_type,
+                            status="pending",
+                            job_id="ordered-repo#1",
                         )
                     )
 
@@ -792,6 +795,7 @@ class TestGetJobLogEndpoint:
                         event_type="task_started",
                         status="pending",
                         message="starting up",
+                        job_id="fields-repo#1",
                     )
                 )
 
@@ -879,6 +883,7 @@ class TestGetJobLogEndpoint:
                         task_id=task_id_mine,
                         event_type="task_started",
                         status="pending",
+                        job_id="scoped-repo#1",
                     )
                 )
                 # Insert event for ANOTHER task (should not appear)
@@ -887,6 +892,7 @@ class TestGetJobLogEndpoint:
                         task_id=task_id_other,
                         event_type="task_started",
                         status="pending",
+                        job_id="other-repo#2",
                     )
                 )
 

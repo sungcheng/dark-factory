@@ -21,8 +21,13 @@ CREATE TABLE IF NOT EXISTS events (
     event_type TEXT NOT NULL,
     status TEXT NOT NULL,
     message TEXT,
-    timestamp TEXT NOT NULL
+    timestamp TEXT NOT NULL,
+    job_id TEXT NOT NULL DEFAULT ''
 )
+"""
+
+_MIGRATE_EVENTS_ADD_JOB_ID = """\
+ALTER TABLE events ADD COLUMN job_id TEXT NOT NULL DEFAULT ''
 """
 
 _CREATE_JOBS_SQL = """\
@@ -44,11 +49,18 @@ async def init_db() -> None:
     """Initialize database on application startup.
 
     Creates the events and jobs tables if they do not already exist.
-    Safe to call multiple times (idempotent).
+    Runs migrations for schema changes. Safe to call multiple times.
     """
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(_CREATE_EVENTS_SQL)
         await conn.execute(_CREATE_JOBS_SQL)
+
+        # Migration: add job_id column to existing events tables
+        try:
+            await conn.execute(_MIGRATE_EVENTS_ADD_JOB_ID)
+        except Exception:
+            pass  # Column already exists
+
         await conn.commit()
 
 
@@ -160,8 +172,9 @@ async def insert_event(event_in: EventIn) -> EventOut:
         await conn.execute(_CREATE_EVENTS_SQL)
         await conn.execute(
             """\
-            INSERT INTO events (id, task_id, event_type, status, message, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO events
+                (id, task_id, event_type, status, message, timestamp, job_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_id,
@@ -170,6 +183,7 @@ async def insert_event(event_in: EventIn) -> EventOut:
                 event_in.status,
                 event_in.message,
                 timestamp.isoformat(),
+                event_in.job_id,
             ),
         )
         await conn.commit()
@@ -180,34 +194,54 @@ async def insert_event(event_in: EventIn) -> EventOut:
         event_type=event_in.event_type,
         status=event_in.status,
         message=event_in.message,
+        job_id=event_in.job_id,
         timestamp=timestamp,
     )
 
 
-async def fetch_events_for_job(task_ids: list[str]) -> list[EventOut]:
-    """Fetch all events for given task IDs, ordered by timestamp ascending.
+async def fetch_events_for_job(
+    task_ids: list[str],
+    job_id: str = "",
+) -> list[EventOut]:
+    """Fetch events for a job, ordered by timestamp ascending.
+
+    When job_id is provided, filters events by job_id (preferred).
+    Falls back to task_id-based matching for backward compatibility
+    with events created before the job_id column was added.
 
     Args:
-        task_ids: List of task IDs to fetch events for
+        task_ids: List of task IDs to fetch events for (fallback)
+        job_id: Job identifier to filter events by (preferred)
 
     Returns:
         List of EventOut, ordered by timestamp ascending
     """
-    if not task_ids:
+    if not task_ids and not job_id:
         return []
 
-    placeholders = ",".join("?" for _ in task_ids)
-    query = f"""\
-        SELECT id, task_id, event_type, status, message, timestamp
-        FROM events
-        WHERE task_id IN ({placeholders})
-        ORDER BY timestamp ASC
-    """
+    if job_id:
+        # Prefer job_id scoping — no cross-run collisions
+        query = """\
+            SELECT id, task_id, event_type, status, message, timestamp, job_id
+            FROM events
+            WHERE job_id = ?
+            ORDER BY timestamp ASC
+        """
+        params: tuple[str, ...] = (job_id,)
+    else:
+        placeholders = ",".join("?" for _ in task_ids)
+        query = f"""\
+            SELECT id, task_id, event_type, status, message, timestamp, job_id
+            FROM events
+            WHERE task_id IN ({placeholders})
+            ORDER BY timestamp ASC
+        """
+        params = tuple(task_ids)
 
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(_CREATE_EVENTS_SQL)
         conn.row_factory = aiosqlite.Row
-        async with conn.execute(query, task_ids) as cursor:
+        async with conn.execute(query, params) as cursor:
             rows = await cursor.fetchall()
 
     return [
@@ -217,6 +251,7 @@ async def fetch_events_for_job(task_ids: list[str]) -> list[EventOut]:
             event_type=row["event_type"],
             status=row["status"],
             message=row["message"],
+            job_id=row["job_id"],
             timestamp=datetime.fromisoformat(row["timestamp"]),
         )
         for row in rows

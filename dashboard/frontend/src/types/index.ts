@@ -15,6 +15,7 @@ export interface Event {
   event_type: string;
   status: string;
   message: string | null;
+  job_id: string;
   timestamp: string;
 }
 

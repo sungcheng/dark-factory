@@ -42,45 +42,53 @@ LIFECYCLE_EVENTS: list[dict[str, object]] = [
         "task_id": JOB_ID,
         "event_type": "job_started",
         "status": "pending",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "agent_spawned",
         "status": "pending",
         "message": "Architect",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "task_started",
         "status": "pending",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "round_result",
         "status": "failure",
         "message": "round 1",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "round_result",
         "status": "success",
         "message": "round 2",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "task_completed",
         "status": "success",
+        "job_id": JOB_ID,
     },
     {
         "task_id": TASK_ID,
         "event_type": "agent_exited",
         "status": "success",
         "message": "Architect",
+        "job_id": JOB_ID,
     },
     {
         "task_id": JOB_ID,
         "event_type": "job_completed",
         "status": "success",
+        "job_id": JOB_ID,
     },
 ]
 

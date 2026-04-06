@@ -198,4 +198,4 @@ async def get_job_log(job_id: str) -> list[EventOut]:
         task_ids.append(t["id"])
         for s in t.get("subtasks", []):
             task_ids.append(s["id"])
-    return await fetch_events_for_job(task_ids)
+    return await fetch_events_for_job(task_ids, job_id=job_id)

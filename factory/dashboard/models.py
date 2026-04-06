@@ -13,6 +13,7 @@ class EventIn(BaseModel):
     event_type: str  # e.g., "task_started", "agent_completed", "error"
     status: str  # e.g., "pending", "success", "failure"
     message: str | None = None  # Optional description
+    job_id: str = ""  # e.g., "weather-app#137"
 
 
 class EventOut(BaseModel):
@@ -23,6 +24,7 @@ class EventOut(BaseModel):
     event_type: str
     status: str
     message: str | None = None
+    job_id: str = ""
     timestamp: datetime  # ISO 8601, server-generated, UTC
 
     model_config = ConfigDict(from_attributes=True)

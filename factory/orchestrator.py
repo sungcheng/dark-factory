@@ -58,7 +58,8 @@ async def run_job(
     # Health check — verify claude CLI works before doing anything
     await _check_claude_cli()
 
-    emitter = EventEmitter()
+    job_id = f"{repo_name}#{issue_number}"
+    emitter = EventEmitter(job_id=job_id)
     await emitter.emit_job_started(repo_name, issue_number)
 
     github = GitHubClient()

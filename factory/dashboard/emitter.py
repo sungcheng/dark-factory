@@ -23,8 +23,9 @@ class EventEmitter:
     are silent no-ops.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, job_id: str = "") -> None:
         self._base_url = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+        self._job_id = job_id
 
     @property
     def enabled(self) -> bool:
@@ -35,6 +36,10 @@ class EventEmitter:
         """POST an event payload. Swallows all errors."""
         if not self.enabled:
             return
+
+        # Inject job_id if not already set
+        if not event.job_id and self._job_id:
+            event.job_id = self._job_id
 
         url = f"{self._base_url}/api/v1/events"
         LOG.debug("Emitting %s for task %s", event.event_type, event.task_id)
