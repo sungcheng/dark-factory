@@ -109,6 +109,7 @@ Common things that already exist (skip these):
 - **Acceptance criteria must be testable** — QA Engineer will write tests from these
 - **First task is scaffolding ONLY if needed** — skip if project structure already exists
 - **Last task should be integration** — end-to-end test that proves the whole thing works
+- **`make test` and `make check` MUST pass after EVERY task** — this is critical. If a code change breaks existing tests, those tests must be updated in the SAME task as the code change. NEVER separate "rewrite code" from "update tests for that code" into different tasks. The pipeline runs `make test` after each task and will reject any task that leaves the test suite broken.
 
 ## Standards by Project Type
 
