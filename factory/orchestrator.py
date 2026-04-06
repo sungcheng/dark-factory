@@ -324,6 +324,9 @@ async def run_job(
             model,
         )
         if validation_ok:
+            # Clean up DF artifacts from the repo
+            await _cleanup_df_artifacts(ctx)
+
             # Staff Engineer review — opus reads everything and optimizes
             LOG.info("👨‍💻 Staff Engineer reviewing code quality...")
             await emitter.emit_log(
@@ -1629,6 +1632,56 @@ async def _finalize_task(
             failure_issue.number,
         )
         save_state(state)
+
+
+async def _cleanup_df_artifacts(ctx: JobContext) -> None:
+    """Remove Dark Factory working files from the repo and commit."""
+    from factory.security import DF_ARTIFACTS
+
+    removed = []
+    for pattern in DF_ARTIFACTS:
+        if "*" in pattern:
+            for path in Path(ctx.working_dir).glob(pattern):
+                if path.is_file():
+                    removed.append(path.name)
+        else:
+            path = Path(ctx.working_dir) / pattern
+            if path.is_file():
+                removed.append(path.name)
+
+    if not removed:
+        return
+
+    # git rm the artifacts and commit
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "rm",
+        "-f",
+        "--",
+        *removed,
+        cwd=ctx.working_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    if proc.returncode == 0:
+        proc = await asyncio.create_subprocess_exec(
+            "git",
+            "commit",
+            "-m",
+            "chore: remove Dark Factory artifacts",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        await _push_changes(ctx)
+        LOG.info(
+            "🧹 Removed %d DF artifact(s): %s",
+            len(removed),
+            ", ".join(removed),
+        )
 
 
 def _auto_cleanup_sub_issues(

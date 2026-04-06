@@ -124,6 +124,16 @@ Never run: {blocked}
 """
 
 
+# Dark Factory working files that should never be committed
+DF_ARTIFACTS: list[str] = [
+    "tasks.json",
+    "contracts.md",
+    "contracts.*.md",
+    "feedback.md",
+    "approved.md",
+]
+
+
 def write_security_policy(working_dir: str) -> None:
     """Write or append security policy to project CLAUDE.md."""
     from factory.guardrails import detect_tech_stack
@@ -143,3 +153,23 @@ def write_security_policy(working_dir: str) -> None:
         claude_md.write_text(policy)
 
     LOG.info("Security policy written to %s", claude_md)
+
+    # Ensure DF artifacts are in .gitignore
+    _ensure_gitignore(working_dir)
+
+
+def _ensure_gitignore(working_dir: str) -> None:
+    """Add DF artifacts to .gitignore if not already present."""
+    gitignore = Path(working_dir) / ".gitignore"
+    marker = "# Dark Factory artifacts"
+
+    if gitignore.exists():
+        content = gitignore.read_text()
+        if marker in content:
+            return
+    else:
+        content = ""
+
+    block = f"\n{marker}\n" + "\n".join(DF_ARTIFACTS) + "\n"
+    gitignore.write_text(content + block)
+    LOG.info("Added DF artifacts to .gitignore")
