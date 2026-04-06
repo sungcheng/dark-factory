@@ -18,16 +18,17 @@ function formatDuration(seconds: number): string {
 }
 
 function getJobStartTime(events: Event[]): Date | null {
-  // Use the EARLIEST job_started event — this is when the overall run began
+  // Use the LATEST job_started event — this is when the current run began
+  // (older job_started events are from previous completed/failed runs)
   const starts = events
     .filter((e) => e.event_type === "job_started")
     .map((e) => new Date(e.timestamp).getTime())
-    .sort((a, b) => a - b); // oldest first
+    .sort((a, b) => b - a); // newest first
 
   if (starts.length > 0) {
     return new Date(starts[0]);
   }
-  // Fallback: earliest event timestamp
+  // Fallback: latest event timestamp minus a small buffer
   if (events.length > 0) {
     const timestamps = events.map((e) => new Date(e.timestamp).getTime());
     return new Date(Math.min(...timestamps));
@@ -101,7 +102,11 @@ export function TimeEstimate({
   }, [tasks.length]);
 
   const startTime = getJobStartTime(events);
-  const allDurations = getTaskDurations(events);
+  // Only count durations from events after the current job started
+  const currentRunEvents = startTime
+    ? events.filter((e) => new Date(e.timestamp).getTime() >= startTime.getTime())
+    : events;
+  const allDurations = getTaskDurations(currentRunEvents);
   // Filter out skipped tasks (< 30s) for estimation
   const realDurations = allDurations.filter(
     (d) => d >= MIN_TASK_DURATION,
