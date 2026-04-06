@@ -293,11 +293,17 @@ class GitHubClient:
             )
             LOG.info("🔒 Branch protection enabled on %s/main", repo_name)
         except Exception as exc:
-            LOG.warning(
-                "Could not enable branch protection on %s: %s",
-                repo_name,
-                exc,
-            )
+            if "403" in str(exc):
+                LOG.debug(
+                    "Branch protection unavailable on %s (free plan)",
+                    repo_name,
+                )
+            else:
+                LOG.warning(
+                    "Could not enable branch protection on %s: %s",
+                    repo_name,
+                    exc,
+                )
 
     def close_issue(self, repo_name: str, issue_number: int) -> None:
         """Close an issue as completed."""
