@@ -53,10 +53,14 @@ COMPLEXITY_MODELS: dict[str, str] = {
 }
 
 
+MERGE_POLL_INTERVAL = 30  # seconds between merge checks
+
+
 async def run_job(
     repo_name: str,
     issue_number: int,
     model: str | None = None,
+    merge_mode: str = "auto",
 ) -> None:
     """Main orchestrator loop."""
     # Start dashboard if not running
@@ -279,6 +283,7 @@ async def run_job(
                 emitter,
                 repo_name,
                 issue_number,
+                merge_mode,
             )
         else:
             # Single task — no worktree overhead
@@ -292,6 +297,7 @@ async def run_job(
                 emitter,
                 repo_name,
                 issue_number,
+                merge_mode,
             )
 
     # Step 7: Finalize
@@ -1292,6 +1298,7 @@ async def _process_single_task_in_batch(
     emitter: EventEmitter,
     repo_name: str,
     issue_number: int,
+    merge_mode: str = "auto",
 ) -> None:
     """Process a single task: skip check, red-green cycle, PR, merge."""
     await _checkout_main(ctx)
@@ -1337,6 +1344,7 @@ async def _process_single_task_in_batch(
         repo_name,
         issue_number,
         task_branch,
+        merge_mode,
     )
 
 
@@ -1349,6 +1357,7 @@ async def _process_batch_with_worktrees(
     emitter: EventEmitter,
     repo_name: str,
     issue_number: int,
+    merge_mode: str = "auto",
 ) -> None:
     """Process a batch of independent tasks in parallel via git worktrees."""
     LOG.info(
@@ -1425,6 +1434,7 @@ async def _process_batch_with_worktrees(
                     emitter,
                     repo_name,
                     issue_number,
+                    merge_mode,
                 )
             return
 
@@ -1575,6 +1585,7 @@ async def _process_batch_with_worktrees(
             repo_name,
             issue_number,
             task_branch,
+            merge_mode,
         )
 
         # Remove worktree
@@ -1605,6 +1616,7 @@ async def _finalize_task(
     repo_name: str,
     issue_number: int,
     task_branch: str,
+    merge_mode: str = "auto",
 ) -> None:
     """Push, PR, and merge a completed task — or create draft PR for failures."""
     if task.status == "completed":
@@ -1723,9 +1735,31 @@ async def _finalize_task(
             f"🚀 Opened PR #{pr.number} for {task.title}",
         )
 
-        github.merge_pr(repo_name, pr.number)
-        LOG.info("✅ Merged PR #%d", pr.number)
-        await emitter.emit_log(task.id, f"✅ Merged PR #{pr.number}", "success")
+        if merge_mode == "manual":
+            # Wait for human to merge the PR
+            LOG.info(
+                "⏸️ Waiting for human merge of PR #%d...",
+                pr.number,
+            )
+            await emitter.emit_log(
+                task.id,
+                f"⏸️ PR #{pr.number} ready — waiting for human merge",
+            )
+            await _wait_for_merge(github, repo_name, pr.number, emitter, task.id)
+            LOG.info("✅ PR #%d merged by human", pr.number)
+            await emitter.emit_log(
+                task.id,
+                f"✅ PR #{pr.number} merged — continuing",
+                "success",
+            )
+        else:
+            github.merge_pr(repo_name, pr.number)
+            LOG.info("✅ Merged PR #%d", pr.number)
+            await emitter.emit_log(
+                task.id,
+                f"✅ Merged PR #{pr.number}",
+                "success",
+            )
 
         if task.issue_number:
             github.close_issue(repo_name, task.issue_number)
@@ -1766,6 +1800,38 @@ async def _finalize_task(
             failure_issue.number,
         )
         save_state(state)
+
+
+async def _wait_for_merge(
+    github: GitHubClient,
+    repo_name: str,
+    pr_number: int,
+    emitter: EventEmitter | None = None,
+    task_id: str = "",
+) -> None:
+    """Poll GitHub every 30s until a PR is merged or closed."""
+    repo = github.get_repo(repo_name)
+    poll_count = 0
+    while True:
+        await asyncio.sleep(MERGE_POLL_INTERVAL)
+        poll_count += 1
+        pr = repo.get_pull(pr_number)
+        if pr.merged:
+            return
+        if pr.state == "closed":
+            raise RuntimeError(f"PR #{pr_number} was closed without merging")
+        # Log every 10 polls (~5 min) so the user knows it's alive
+        if poll_count % 10 == 0:
+            LOG.info(
+                "  ⏳ Still waiting for PR #%d merge (%d checks)...",
+                pr_number,
+                poll_count,
+            )
+            if emitter and task_id:
+                await emitter.emit_log(
+                    task_id,
+                    f"⏳ Waiting for PR #{pr_number} merge...",
+                )
 
 
 async def _cleanup_df_artifacts(ctx: JobContext) -> None:
