@@ -355,9 +355,15 @@ class GitHubClient:
         commit = repo.get_commit(pr.head.sha)
 
         # Check GitHub Actions (check runs)
-        check_runs = list(commit.get_check_runs())
+        try:
+            check_runs = list(commit.get_check_runs())
+        except Exception as exc:
+            LOG.warning(
+                "Cannot read CI checks (token may lack checks:read): %s",
+                exc,
+            )
+            return "none", "Cannot read CI checks — proceeding"
         if not check_runs:
-            # No CI configured
             return "none", "No CI checks found"
 
         failed: list[str] = []

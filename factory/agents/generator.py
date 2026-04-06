@@ -36,11 +36,23 @@ async def run_generator(
 
     feedback_note = ""
     if round_number > 1:
+        # Read feedback content directly so the Developer can't miss it
+        from pathlib import Path
+
+        feedback_path = Path(working_dir) / "feedback.md"
+        feedback_content = ""
+        if feedback_path.exists():
+            feedback_content = feedback_path.read_text()[:3000]
+
         feedback_note = (
-            f"\n\n**IMPORTANT**: This is round {round_number}. "
-            "Read `feedback.md` for specific issues from the QA Engineer. "
-            "Fix every issue mentioned. Delete `feedback.md` when done."
+            f"\n\n## ⚠️ ROUND {round_number} — YOU MUST FIX THESE ISSUES\n\n"
+            f"The QA Engineer rejected your previous work. "
+            f"You MUST fix every issue below before doing anything else. "
+            f"Do NOT say 'everything is already correct'. "
+            f"The issues are real — fix them.\n\n"
         )
+        if feedback_content:
+            feedback_note += f"### QA Feedback\n\n{feedback_content}\n\n---\n\n"
 
     # Inject guardrails
     tech_stack = detect_tech_stack(working_dir)
