@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 from factory.dashboard.db import fetch_all_jobs
 from factory.dashboard.db import fetch_events_for_job
+from factory.dashboard.db import fetch_job
 from factory.dashboard.models import EventOut
 from factory.dashboard.models import JobDetail
 from factory.dashboard.models import JobSummary
@@ -198,4 +199,9 @@ async def get_job_log(job_id: str) -> list[EventOut]:
         task_ids.append(t["id"])
         for s in t.get("subtasks", []):
             task_ids.append(s["id"])
-    return await fetch_events_for_job(task_ids, job_id=job_id)
+
+    # Get the job's created_at to scope fallback queries
+    db_job = await fetch_job(job_id)
+    created_at = str(db_job["created_at"]) if db_job else ""
+
+    return await fetch_events_for_job(task_ids, job_id=job_id, since=created_at)

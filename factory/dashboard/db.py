@@ -202,6 +202,7 @@ async def insert_event(event_in: EventIn) -> EventOut:
 async def fetch_events_for_job(
     task_ids: list[str],
     job_id: str = "",
+    since: str = "",
 ) -> list[EventOut]:
     """Fetch events for a job, ordered by timestamp ascending.
 
@@ -238,16 +239,29 @@ async def fetch_events_for_job(
                 rows = list(await cursor.fetchall())
 
         # Fall back to task_id matching (backward compat for old events)
+        # Use `since` to avoid pulling in events from older runs
         if not rows and task_ids:
             placeholders = ",".join("?" for _ in task_ids)
-            query = f"""\
-                SELECT id, task_id, event_type, status, message,
-                       timestamp, job_id
-                FROM events
-                WHERE task_id IN ({placeholders})
-                ORDER BY timestamp ASC
-            """
-            async with conn.execute(query, tuple(task_ids)) as cursor:
+            if since:
+                query = f"""\
+                    SELECT id, task_id, event_type, status, message,
+                           timestamp, job_id
+                    FROM events
+                    WHERE task_id IN ({placeholders})
+                      AND timestamp >= ?
+                    ORDER BY timestamp ASC
+                """
+                params = (*task_ids, since)
+            else:
+                query = f"""\
+                    SELECT id, task_id, event_type, status, message,
+                           timestamp, job_id
+                    FROM events
+                    WHERE task_id IN ({placeholders})
+                    ORDER BY timestamp ASC
+                """
+                params = tuple(task_ids)
+            async with conn.execute(query, params) as cursor:
                 rows = list(await cursor.fetchall())
 
     return [
