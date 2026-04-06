@@ -1360,6 +1360,30 @@ async def _finalize_task(
                         stderr=asyncio.subprocess.PIPE,
                     )
 
+        # Check if branch has any commits ahead of main
+        proc = await asyncio.create_subprocess_exec(
+            "git", "log", "origin/main..HEAD", "--oneline",
+            cwd=ctx.working_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        if not stdout.decode().strip():
+            # No new commits — code already existed, skip PR
+            LOG.info(
+                "⏭️ No new commits for '%s' — skipping PR",
+                task.title,
+            )
+            await emitter.emit_log(
+                task.id,
+                f"⏭️ No new commits for '{task.title}' — already on main",
+                "success",
+            )
+            if task.issue_number:
+                github.close_issue(repo_name, task.issue_number)
+            save_state(state)
+            return
+
         await _push_branch(ctx, task_branch)
         pr = github.create_pr(
             repo_name=repo_name,
