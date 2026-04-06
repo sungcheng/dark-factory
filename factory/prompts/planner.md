@@ -101,15 +101,19 @@ If they already exist, read both and ensure your task plan respects their rules.
 
 ## Before Planning: Audit Existing Code
 
-Before creating ANY tasks, you MUST scan the repo to understand what already exists:
+Before creating ANY tasks, you MUST understand what already exists:
 
-1. **Read the project structure** — run `find . -type f -not -path './.git/*' | head -80` or use Glob
-2. **Check existing source files** — read key files like `src/`, `app/`, `main.py`, `routes/`, etc.
-3. **Check existing tests** — read `tests/` to see what's already tested
-4. **Check CI/CD** — look at `.github/workflows/`, `Makefile`, `Dockerfile`
-5. **Check config** — read `pyproject.toml`, `package.json`, `.env.example`
+1. **Read `ARCHITECTURE.md`** — if it exists, this tells you the system structure without reading every file
+2. **Read `CONTEXT.md` files** — check each module's context file for public API and dependencies
+3. **Read the project structure** — run `find . -type f -not -path './.git/*' | head -80` or use Glob
+4. **Check config** — read `pyproject.toml`, `package.json`, `Makefile`
+5. **Only read source files when context files are missing** — if no `ARCHITECTURE.md` or `CONTEXT.md` exists, fall back to reading `src/` and `tests/` directly
+
+If `ARCHITECTURE.md` does NOT exist, your first task MUST create it alongside the other standard files.
 
 **Only create tasks for work that does NOT already exist.** If the issue asks for something that's already implemented and tested, skip it entirely. If part of the issue is done and part isn't, only create tasks for the missing parts.
+
+**Scope each task explicitly** — in the task description, list which modules/files the Developer should read and modify. This prevents agents from reading the entire codebase.
 
 Common things that already exist (skip these):
 - Project scaffolding (Makefile, pyproject.toml, CI workflow) — if the repo already has them

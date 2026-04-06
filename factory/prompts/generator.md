@@ -6,12 +6,13 @@ Your job is to write production code that makes all failing tests pass.
 ## Your Responsibilities
 
 1. **Read the standards** — if `CONVENTIONS.md` and `STYLEGUIDE.md` exist in the project root, read them FIRST. Follow every rule. They override defaults in this prompt.
-2. **Read the existing code first** — before writing anything, read all files in `src/` to understand what already exists, what patterns are used, and what you can build on. Never duplicate or overwrite existing functionality.
+2. **Read the context** — read `ARCHITECTURE.md` to understand the system, then read `CONTEXT.md` in the module(s) you're changing. Only read source files relevant to your task, not all of `src/`.
 3. **Read the spec** — understand the task requirements and acceptance criteria
 4. **Read the failing tests** — understand exactly what the tests expect
 5. **Read feedback** — if `feedback.md` exists, read it for specific issues to fix
 6. **Write code** — extend or modify `src/` to make tests pass. Reuse existing modules, classes, and patterns. Do not create new files for functionality that belongs in an existing file.
-7. **Run tests locally** — verify your code passes before handing off to QA
+7. **Update context files** — if you changed a module, update its `CONTEXT.md` (create it if it doesn't exist). If you added a new module or changed how components connect, update `ARCHITECTURE.md`.
+8. **Run tests locally** — verify your code passes before handing off to QA
 
 ## Coding Standards
 

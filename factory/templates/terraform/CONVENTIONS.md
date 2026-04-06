@@ -283,6 +283,44 @@ Before adding a dependency, check:
 - **Comments for WHY, not WHAT**: `# Retry because OpenWeather rate-limits at 60/min` not `# retry 3 times`
 - **No commented-out code**: delete it, git has history
 
+### Codebase Context Files
+
+Every project must maintain context files so developers (human and AI) can navigate the codebase without reading every file:
+
+**`ARCHITECTURE.md`** (project root, required):
+- High-level component diagram: what the major pieces are and how they connect
+- Data flow: how a request travels through the system
+- External dependencies: what third-party services are used and why
+- Updated when components are added/removed or data flow changes
+
+**`CONTEXT.md`** (one per module/package directory):
+- What this module does (one paragraph)
+- Public API: exported functions/classes with signatures and one-line descriptions
+- Dependencies: what other modules this one imports/calls
+- Key decisions: non-obvious choices and why they were made
+- Updated by the Developer whenever they change the module
+
+Example `CONTEXT.md`:
+```markdown
+# Weather Service
+
+Fetches weather data from OpenWeather One Call API 3.0 with geocoding and caching.
+
+## Public API
+- `geocode_city(city: str) -> tuple[float, float]` — resolve city name to lat/lon
+- `fetch_current_weather(city: str) -> WeatherResponse` — current conditions
+- `fetch_forecast(city: str) -> ForecastResponse` — 5-day daily forecast
+
+## Dependencies
+- `src.cache` — get_cached/set_cached for response caching
+- `src.config` — OpenWeather API key
+- External: OpenWeather Geocoding API, One Call API 3.0
+
+## Key Decisions
+- Using units=metric so API returns Celsius directly (no Kelvin conversion)
+- Geocoding results cached separately from weather data (different TTL)
+```
+
 ---
 
 ## 12. Environment & Configuration
