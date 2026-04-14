@@ -10,7 +10,7 @@ LOG = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).parent
 
 AVAILABLE_TEMPLATES = {
-    "fastapi": "FastAPI web service with health endpoint, config, Docker",
+    "fastapi": "FastAPI service with layered architecture (routers/services/repositories), async SQLite, SSE job progress",
     "fullstack": "FastAPI backend + React frontend with Docker Compose",
     "terraform": "Terraform IaC with environments, modules, CI/CD",
 }

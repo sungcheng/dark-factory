@@ -77,9 +77,17 @@ class AgentConfig:
 
 
 def load_prompt(prompt_name: str) -> str:
-    """Load a prompt template from factory/prompts/."""
-    prompt_path = Path(__file__).parent.parent / "prompts" / f"{prompt_name}.md"
-    return prompt_path.read_text()
+    """Load a prompt template from factory/prompts/.
+
+    The shared `_principles.md` file is prepended to every agent prompt so the
+    four guiding principles (think before doing, simplicity first, surgical
+    changes, goal-driven execution) apply across roles. Prompt files
+    themselves stay focused on role-specific responsibilities.
+    """
+    prompts_dir = Path(__file__).parent.parent / "prompts"
+    principles = (prompts_dir / "_principles.md").read_text()
+    role_prompt = (prompts_dir / f"{prompt_name}.md").read_text()
+    return f"{principles}\n\n---\n\n{role_prompt}"
 
 
 async def run_agent(config: AgentConfig) -> AgentResult:
@@ -89,8 +97,19 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     The orchestrator controls what tools each agent can access.
     """
     model = config.model or DEFAULT_MODELS.get(config.role, "sonnet")
+
+    # Route to local model if configured (e.g., sonnet → local Qwen)
+    local_model = os.environ.get("DF_LOCAL_MODEL")
+    if local_model and model == "sonnet":
+        from factory.agents.local_runner import run_local_agent
+
+        config.model = local_model
+        return await run_local_agent(config)
+
+    cli = os.environ.get("DF_AGENT_CLI", "claude")
+
     cmd = [
-        "claude",
+        cli,
         "-p",
         config.prompt,
         "--output-format",
@@ -102,12 +121,13 @@ async def run_agent(config: AgentConfig) -> AgentResult:
     if config.allowed_tools:
         cmd.extend(["--allowedTools", ",".join(config.allowed_tools)])
 
-    LOG.info("  🤖 Spawning %s (model=%s)", config.role, model)
+    LOG.info("  🤖 Spawning %s (model=%s, cli=%s)", config.role, model, cli)
 
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=config.working_dir,
+            env=None,
             stdout=asyncio.subprocess.PIPE,
             stderr=None,  # Let stderr stream to terminal for visibility
             start_new_session=True,  # Create process group for clean cleanup

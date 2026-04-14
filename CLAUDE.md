@@ -59,15 +59,7 @@ make help           # Show all commands
 - Log meaningful messages — include context (repo name, issue number, task id)
 
 ### Python Style
-- Python 3.11+, async/await throughout
-- Formatter/linter: ruff (line-length 88)
-- Type checker: mypy (strict mode)
-- Type hints on ALL functions (parameters and return types)
-- Imports: one per line, sorted by ruff isort
-- Use `from __future__ import annotations` in every module
-- Dataclasses for data containers
-- f-strings for formatting
-- Logging: `LOG = logging.getLogger(__name__)` at module level
+Follow `factory/templates/fastapi/STYLEGUIDE.md`. Python 3.11+, async/await throughout. `from __future__ import annotations` in every module.
 
 ### Architecture
 - Orchestrator must stay "dumb" — no AI logic, just subprocess management

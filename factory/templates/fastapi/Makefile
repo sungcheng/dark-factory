@@ -1,25 +1,29 @@
-.PHONY: develop test fast-test check format clean docker-build docker-run staging staging-down prod prod-down help
+.PHONY: develop test fast-test check format run clean docker-build docker-run staging staging-down prod prod-down help
 
 # ─── Setup ───────────────────────────────────────────────
 develop:			## Install all dependencies
-	uv sync --all-extras
+	uv sync
 
 # ─── Testing ─────────────────────────────────────────────
 test:				## Run all tests
-	uv run pytest tests/ -v --tb=short
+	uv run pytest -q
 
 fast-test:			## Run tests excluding slow markers
-	uv run pytest tests/ -v --tb=short -m "not slow"
+	uv run pytest -q -m "not slow"
 
 # ─── Code Quality ────────────────────────────────────────
 check:				## Full lint suite
-	uv run ruff check src/ tests/
-	uv run ruff format --check src/ tests/
-	uv run mypy src/
+	uv run ruff check app/ tests/ main.py
+	uv run ruff format --check app/ tests/ main.py
+	uv run mypy app main.py
 
 format:				## Auto-format
-	uv run ruff format src/ tests/
-	uv run ruff check --fix src/ tests/
+	uv run ruff format app/ tests/ main.py
+	uv run ruff check --fix app/ tests/ main.py
+
+# ─── Runtime ─────────────────────────────────────────────
+run:				## Run dev server
+	uv run fastapi dev main.py
 
 # ─── Docker ──────────────────────────────────────────────
 docker-build:			## Build Docker image
@@ -45,7 +49,8 @@ prod-down:			## Stop production
 
 # ─── Housekeeping ────────────────────────────────────────
 clean:				## Remove build artifacts
-	rm -rf .venv __pycache__ .pytest_cache .mypy_cache dist *.egg-info
+	rm -rf .venv __pycache__ .pytest_cache .mypy_cache .ruff_cache dist *.egg-info
+	rm -rf data/*.db data/*.db-wal data/*.db-shm
 
 help:				## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'

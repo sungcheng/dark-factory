@@ -54,10 +54,34 @@ def fetch_weather(city: str, units: str = "metric") -> WeatherResponse:
 - **Early returns** for error cases, keep the happy path unindented
 
 ### Data Structures
-- **Pydantic models** for all API request/response schemas
-- **Dataclasses** for internal data containers
+- **Pydantic models** for all API request/response schemas — goes in `schemas.py`
+- **Dataclasses** for internal data containers — `@dataclass(slots=True)` — goes in `models.py`
 - **TypedDict** only when interfacing with untyped dicts (e.g., JSON from external APIs)
-- **Enums** for fixed sets of values, never magic strings
+- **Enums** for fixed sets of values, never magic strings:
+  - **`StrEnum`** for stringly-typed domain enums (statuses, kinds): `class JobStatus(StrEnum): PENDING = "pending"`
+  - Plain `Enum` only when the value type matters more than string interchangeability
+- **Never conflate domain models and wire schemas** — dataclasses describe what the system *is*, Pydantic describes what goes over the wire. They have different lifecycles.
+
+### Type Hints (modern)
+
+Use PEP 585 / PEP 604 forms exclusively. The older `typing` forms are deprecated for these use cases.
+
+| Use | Not |
+|---|---|
+| `list[int]` | `List[int]` |
+| `dict[str, int]` | `Dict[str, int]` |
+| `tuple[int, ...]` | `Tuple[int, ...]` |
+| `set[str]` | `Set[str]` |
+| `int \| None` | `Optional[int]` |
+| `int \| str` | `Union[int, str]` |
+
+Import streaming/async types from `collections.abc`, not `typing`:
+
+```python
+from collections.abc import AsyncIterator, AsyncGenerator, Awaitable, Callable, Iterable, Sequence
+```
+
+Use `from __future__ import annotations` at the top of **every** module. This makes all annotations lazy strings, avoids forward-reference issues, and improves import time.
 
 ### Strings
 - **f-strings only**: never `.format()`, never `%` formatting
@@ -83,6 +107,29 @@ cities = [
     "Tokyo"
 ]
 ```
+
+### Async
+
+- **`async def` throughout** — no sync handlers, no sync service methods that touch I/O
+- **Never block the event loop** — no `time.sleep`, no sync `requests.get`, no large synchronous `open().read()`
+- **Wrap unavoidable sync I/O with `asyncio.to_thread`**:
+  ```python
+  data = await asyncio.to_thread(sync_library.do_thing, arg)
+  ```
+- **`async with` for everything that needs cleanup** — connections, file handles, subscriptions
+- **`AsyncIterator[X]` for streaming generators**, not `Iterator[X]`
+- **Lifespan over startup/shutdown events** — use `@asynccontextmanager` + `FastAPI(lifespan=...)` for starting/stopping worker pools, opening DB, etc.
+
+### Logging style
+
+- Module-level logger: `LOG = logging.getLogger(__name__)` — never `logging.getLogger()` inside a function
+- **Prefer lazy `%s` formatting** in hot paths: `LOG.info("ingest complete inserted=%d skipped=%d", inserted, skipped)` — defers formatting until the logger decides to emit
+- **Structured context via `extra=`** for fields a parser cares about:
+  ```python
+  LOG.info("created item", extra={"item_id": item.id, "category": item.category})
+  ```
+- **Tracebacks** — `LOG.exception("ingest job %s failed", job_id)` inside an `except` block captures the traceback automatically; never `LOG.error(str(e))` which loses the stack
+- **No f-strings in log calls** — `LOG.info(f"job {id}")` formats every call even when DEBUG is off
 
 ## SQL
 
@@ -142,6 +189,17 @@ cities = [
 - **Factory functions for test data**: `make_weather_response(city="London", temp=20.0)`
 - **Each test is self-contained**: never depend on state from another test
 - **Minimal setup**: only create what the test needs
+
+### Async tests
+- **`asyncio_mode = "auto"`** in `pyproject.toml` under `[tool.pytest.ini_options]` — all async tests pick up the event loop without decorators
+- **`pytest_asyncio.fixture`** for fixtures that yield awaitable resources (DB connections, repos)
+- **Real DB per test** via `tmp_path` + `monkeypatch.setenv("APP_DB_PATH", ...)` — do not mock the database; test against a real SQLite per test for speed and fidelity
+- **TestClient as a context manager**: `with TestClient(app) as c:` — this exercises the app's lifespan, so startup/shutdown hooks run in tests
+- **Swap module-level singletons in fixtures** if a per-test config is needed:
+  ```python
+  from app import deps as deps_module
+  deps_module._job_runner = None     # force re-creation with test config
+  ```
 
 ### Coverage
 - **Target 80%** for new code — critical paths + error handling

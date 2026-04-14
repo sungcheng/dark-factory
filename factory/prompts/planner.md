@@ -13,19 +13,7 @@ Your job is to read a GitHub issue and break it into well-defined, implementable
 
 ## Detecting Project Type
 
-Look at the issue content and existing repo files to determine the project type:
-
-| Signals | Project Type | Scaffold With |
-|---|---|---|
-| API, endpoint, REST, FastAPI, service, server, database | **Python API** | pyproject.toml, src/, tests/, Dockerfile |
-| Terraform, infrastructure, VPC, ECS, S3, AWS, cloud, IAM | **Terraform/IaC** | main.tf, variables.tf, modules/, environments/ |
-| React, frontend, dashboard, UI, component, Tailwind | **React Frontend** | package.json, src/, vite.config.ts |
-| CLI, command-line, script, tool | **Python CLI** | pyproject.toml, src/, tests/, entry point |
-
-Adapt the first scaffolding task to match the detected type. For example:
-- Python API → Makefile with `test`, `check`, `format`, Dockerfile, pyproject.toml
-- Terraform → Makefile with `plan`, `apply`, `fmt`, `validate`, main.tf, variables.tf
-- React → package.json, vite.config.ts, tailwind.config.ts
+Look at the issue content and existing repo files to determine the project type (Python API, Terraform/IaC, React frontend, Python CLI, etc.). Adapt the first scaffolding task to match. If a template has already been applied (the repo has its own structure and CONVENTIONS.md/STYLEGUIDE.md), do not re-scaffold — extend the existing layout.
 
 ## Output: tasks.json
 
@@ -138,6 +126,18 @@ Common things that already exist (skip these):
 - Docker/docker-compose setup — if Dockerfile already exists
 - Basic project structure — if src/ and tests/ already exist
 
+## External API & Vendor Integrations
+
+When a task involves integrating with an external API or third-party vendor:
+
+1. **Always verify the latest stable API version** — your training data may be outdated. Before specifying any API version in task descriptions or acceptance criteria, use web search or read the vendor's official documentation to confirm the current stable version.
+2. **Pin to the latest stable version explicitly** — in the task description, state the exact API version the Developer should use (e.g., "Use OpenWeatherMap API v3.0, NOT v2.5"). This prevents the Developer agent from defaulting to an older version from its training data.
+3. **Include the documentation URL** — add the official API docs link in the task description so the Developer agent can reference it directly.
+4. **Specify version in acceptance criteria** — add a criterion like "API calls use v3.0 endpoint" so QA can verify the correct version is used.
+5. **Check for breaking changes** — if migrating from an older API version, note any breaking changes (different auth, renamed fields, changed response formats) in the task description.
+
+**Why this matters**: AI models have a training data cutoff and will default to whatever API version was most common in their training set. This leads to using deprecated or outdated APIs (e.g., OpenWeatherMap v2.5 instead of v3.0). Always verify — never trust the model's default assumption about API versions.
+
 ## Rules
 
 - **DO NOT write any code** — no source files, no test files. Only `tasks.json`.
@@ -148,44 +148,6 @@ Common things that already exist (skip these):
 - **First task is scaffolding ONLY if needed** — skip if project structure already exists
 - **Last task should be integration** — end-to-end test that proves the whole thing works
 - **`make test` and `make check` MUST pass after EVERY task** — this is critical. If a code change breaks existing tests, those tests must be updated in the SAME task as the code change. NEVER separate "rewrite code" from "update tests for that code" into different tasks. The pipeline runs `make test` after each task and will reject any task that leaves the test suite broken.
-
-## Standards by Project Type
-
-### All Projects (required)
-- `CHANGELOG.md` — track version history (Keep a Changelog format)
-- `.editorconfig` — consistent indentation/encoding across editors
-- `.gitignore` — language-appropriate ignores
-- Semantic versioning in package manifest (pyproject.toml, package.json)
-- CI/CD workflow (`.github/workflows/ci.yml`) — lint, test, build on push/PR
-
-### Python (API, CLI, library)
-- `Makefile` with: develop, test, fast-test, check, format, clean, docker-build
-- `pyproject.toml` with ruff, mypy, pytest config
-- `Dockerfile` (multi-stage, non-root user)
-- `.env.example` with placeholder values
-- Type hints on all functions
-- API versioning: all endpoints under `/api/v1/` prefix
-- Pydantic models for all request/response schemas
-- Tests organized by feature (`test_weather.py`, `test_cache.py`), NOT by issue/task number
-- Pre-commit hooks: ruff check + ruff format
-
-### Terraform / Infrastructure
-- `Makefile` with: init, plan, apply, destroy, fmt, validate, check
-- `main.tf`, `variables.tf`, `outputs.tf`, `backend.tf`
-- `environments/` with per-env tfvars (staging, production)
-- `modules/` for reusable components
-- All resources tagged (Project, Environment, ManagedBy)
-- No hardcoded values — use variables
-- No secrets in .tf files
-
-### React / Frontend
-- `package.json` with dev, build, preview, test, lint scripts
-- `vite.config.ts` with API proxy
-- `tailwind.config.ts` for styling
-- `tsconfig.json` for TypeScript (strict mode)
-- Component-based structure in `src/components/`
-- Prettier for formatting (`.prettierrc`)
-- Tests with vitest + @testing-library/react
 
 ## Subtasks (Optional)
 

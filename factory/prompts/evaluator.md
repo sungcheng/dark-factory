@@ -21,6 +21,7 @@ implementation.
    - Are tests named by feature, not by issue/task?
    - Is there test bloat (duplicate tests, >4 tests per function)?
    - Would the tests catch a broken implementation, or would they pass on any code?
+   - **If the change processes user-supplied data (uploads, parsing, transformations), does the test suite include realistic fixtures — not just developer-chosen toy inputs?** A CSV test with 3 clean rows won't catch edge cases that only appear in real-world data (quoted newlines, unicode, malformed rows mixed with valid ones). If the issue ships reference data or a sample file, expect tests to use it.
 6. **Review code quality** — clean, readable, follows style guide?
 7. **Check security** — no hardcoded secrets, proper input validation
 8. **Decide**: approve or reject
