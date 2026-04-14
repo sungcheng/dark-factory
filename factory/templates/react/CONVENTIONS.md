@@ -117,9 +117,15 @@ refactor: extract geocoding into separate module
 ### Response Standards
 - **Success**: return the resource directly (`{"city": "London", ...}`)
 - **Errors**: `{"detail": "Human-readable message"}`
-- **Status codes**: 200 OK, 201 Created, 204 No Content, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 422 Validation Error, 429 Rate Limited, 500 Internal Server Error, 502 Bad Gateway
+- **Status codes**: 200 OK, 201 Created, 202 Accepted, 204 No Content, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 409 Conflict, 410 Gone, 422 Validation Error, 429 Rate Limited, 500 Internal Server Error, 502 Bad Gateway
 - **Pagination**: `?page=1&per_page=20` with `Link` headers or `next`/`previous` in response
 - **Timestamps**: ISO 8601 UTC (`2026-04-06T12:00:00Z`)
+
+### Resource Identifiers
+- **Never expose sequential integer IDs** in external-facing URLs or response bodies. Sequential IDs leak information (creation order, volume) and let attackers enumerate neighbors (`/users/1` → `/users/2` → …).
+- **Use unguessable identifiers** for any resource crossing the API boundary: UUIDs (v4 or v7), ULIDs, or equivalent opaque tokens with ≥122 bits of entropy.
+- **Sequential primary keys are fine internally** — for joins and indexes within your own database — but must never appear in URLs, cursors, or response payloads.
+- **Exception**: intentionally public slugs like tag names or category identifiers where enumeration is the point (e.g., `/categories/electronics`).
 
 ---
 
@@ -159,10 +165,21 @@ refactor: extract geocoding into separate module
 5. **Remove** old column/table (next release cycle)
 
 ### Data Access
-- **Parameterized queries only** — never string-concatenate SQL
+- **Parameterized queries only** — never string-concatenate user input into SQL
 - **ORM for CRUD, raw SQL for complex queries** — don't fight the ORM
 - **Indexes on foreign keys and frequently filtered columns**
-- **Connection pooling** in production
+- **Connection pooling** in production; scope one connection per request
+- **Commit writes explicitly** — don't rely on implicit transactions
+- **Bulk writes batched** — never row-at-a-time for large inserts
+- **Schema init is idempotent** — safe to re-run on every startup
+
+### Pagination
+- **Cursor-based over offset** for anything that might grow past a few thousand rows or where concurrent writes could shift rows between pages. Offset pagination silently skips moved rows.
+- **Opaque cursors** — don't leak internal IDs to clients
+- **Hard cap on page size** — never allow unbounded result sets
+- **Stable sort order** — pagination requires a total ordering; never rely on insertion order
+
+Page-based (`?page=N`) is acceptable for small, admin-only datasets. Never use it for user-facing or high-volume data.
 
 ---
 
@@ -355,3 +372,36 @@ Even if full monitoring isn't set up yet, every project must be **ready** for it
 - **Request logging**: method, path, status code, duration for every request
 - **No swallowed errors**: every exception either handled explicitly or logged
 - **Metrics-friendly**: key operations should be easy to instrument (clear function boundaries, no god functions)
+
+---
+
+## 14. Separation of Concerns
+
+Any service that persists data or has non-trivial business logic must separate layers. Never collapse them into a single file.
+
+- **Routing layer** — parses requests, delegates, serializes responses. No business rules, no data access.
+- **Business-logic layer** — decisions, validation, orchestration. No knowledge of HTTP or storage. Takes a data-access dependency. Testable in isolation.
+- **Data-access layer** — reads and writes persistent state. No business rules. One class per entity.
+- **Internal domain types vs wire schemas** — domain objects describe what the system *is*; wire schemas describe what goes over the network. They have different lifecycles. Don't conflate them.
+
+### Anti-patterns (reject in review)
+- God-file doing routing + parsing + storage + business logic in one place
+- Business logic inside route handlers (handlers should only parse, delegate, serialize)
+- Storage queries outside the data-access layer
+- Business-logic layer importing the web framework
+- Generic module names (`utils.py`, `helpers.py`, `common.py`) — use concrete names
+- Module-level I/O or background work at import time — defer to explicit startup hooks
+
+---
+
+## 15. Long-Running Operations
+
+When an operation takes more than a few seconds:
+
+- **Stream, don't buffer** — never load an entire payload into memory. Process in bounded chunks, write results incrementally.
+- **Report progress** — clients need visibility into operation state.
+- **Throttle progress updates** — publishing on every iteration drowns consumers. Report at a sensible cadence and always on the final tick.
+- **Be cancellable** — clients disappear. Detect disconnects and stop doing work for gone consumers.
+- **Clean up idempotently** — cleanup code must not crash if the target is already gone or was never created.
+- **Graceful shutdown** — drain in-flight work before terminating; never cancel mid-transaction.
+- **Survive individual failures** — one bad job must not take down the worker pool. Isolate failures per unit of work.
