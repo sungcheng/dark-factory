@@ -2599,27 +2599,10 @@ async def _is_task_already_done(
         except Exception:
             pass  # If we can't check, don't skip
 
-    # Check 3: do existing tests pass? (only meaningful if tests exist
-    # for this task — check if test files reference the task's feature)
-    tests_dir = Path(ctx.working_dir) / "tests"
-    if tests_dir.exists():
-        # Look for test files that might be related to this task
-        task_keywords = task.title.lower().split()
-        related_tests = []
-        for test_file in tests_dir.glob("test_*.py"):
-            name = test_file.name.lower()
-            if any(kw in name for kw in task_keywords if len(kw) > 3):
-                related_tests.append(str(test_file))
-
-        if related_tests:
-            # Run just the related tests — if they pass, task is done
-            passed, _ = await _run_tests_with_check(ctx.working_dir)
-            if passed:
-                LOG.info(
-                    "  All tests pass on main — task already satisfied",
-                )
-                return True
-
+    # Trust the Architect — if it planned this task, run it. Don't infer
+    # "already satisfied" from passing tests on main: passing tests may be
+    # entirely unrelated to the task, and the tests that would validate
+    # the task likely don't exist yet. (See issue #41.)
     return False
 
 
