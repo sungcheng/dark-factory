@@ -310,9 +310,12 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 
 Dark Factory auto-releases itself when material changes land on `main`:
 
-`auto-version.yml` runs on push. It reads commits since the last `vX.Y.Z` tag, picks a bump (`feat:`→minor, `fix:`/others→patch, `!:`/`BREAKING`→major), updates `factory/__init__.py` + `CHANGELOG.md`, commits with `chore: bump version to X.Y.Z [skip ci]`, tags the bump, and cuts the GitHub Release — all in one workflow.
+Two workflows split the work cleanly:
 
-No manual bumping. To force a specific bump, prefix your commit with the conventional-commit keyword (e.g., `feat: add streaming endpoint` → minor). Bump commits are skipped on re-entry, so no infinite loop.
+1. **`auto-version.yml`** — on push to main, reads commits since the last `vX.Y.Z` tag, picks a bump (`feat:`→minor, `fix:`/others→patch, `!:`/`BREAKING`→major), updates `factory/__init__.py` + `CHANGELOG.md`, and commits as `chore: bump version to X.Y.Z`. Skips its own bump commits to avoid loops.
+2. **`release.yml`** — on push to main, reads `__version__`. If the tag already exists, no-op. Otherwise creates the tag (pointing at the bump commit) and cuts a GitHub Release from the CHANGELOG section.
+
+No manual bumping. To force a specific bump, prefix your commit with the conventional-commit keyword (e.g., `feat: add streaming endpoint` → minor).
 
 ## Subtasks
 

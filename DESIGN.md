@@ -915,9 +915,10 @@ PHASE 4 — Kubernetes (Future)
 | Workflow | Trigger | Purpose |
 |---|---|---|
 | `ci.yml` | push / PR to `main` | Runs `ruff check`, `ruff format --check`, `pytest tests/` |
-| `auto-version.yml` | push to `main` | Parses commits since last `v*` tag, bumps `__version__` + CHANGELOG, commits with `[skip ci]`, tags, and cuts the GitHub Release — all in one job. Skips its own bump commits to avoid loops. |
+| `auto-version.yml` | push to `main` | Parses commits since last `v*` tag, bumps `__version__` + CHANGELOG, commits as `chore: bump version to X.Y.Z`. Skips its own bump commits via an `if:` guard to avoid loops. |
+| `release.yml` | push to `main` | Reads `__version__`, no-ops if `vX.Y.Z` tag already exists, otherwise creates the tag and cuts a GitHub Release from the matching CHANGELOG section. Fires on the bump commit so the tag points at it directly. |
 
-The bump logic lives in `scripts/auto_version.py` (stateless Python, no async), distinct from `factory/skills/version_bump.py` (which is the POST_JOB skill that bumps *target* repos during DF jobs). Conventional commits drive the bump type: `feat:` → minor, `fix:`/other → patch, `!:` or `BREAKING CHANGE` → major.
+Two workflows kept separate so release logic (signing, artifact publishing, etc.) can grow independently of the bump logic. The bump script lives in `scripts/auto_version.py` (stateless Python, no async), distinct from `factory/skills/version_bump.py` (which is the POST_JOB skill that bumps *target* repos during DF jobs). Conventional commits drive the bump type: `feat:` → minor, `fix:`/other → patch, `!:` or `BREAKING CHANGE` → major.
 
 ## 17. Cost Breakdown
 
