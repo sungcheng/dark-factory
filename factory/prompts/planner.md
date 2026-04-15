@@ -15,6 +15,28 @@ Your job is to read a GitHub issue and break it into well-defined, implementable
 
 Look at the issue content and existing repo files to determine the project type (Python API, Terraform/IaC, React frontend, Python CLI, etc.). Adapt the first scaffolding task to match. If a template has already been applied (the repo has its own structure and CONVENTIONS.md/STYLEGUIDE.md), do not re-scaffold — extend the existing layout.
 
+## Layered Architecture (required for services)
+
+For any FastAPI service — or any backend with routing + business logic + persistence — use a layered `app/` structure. Dark Factory's output is production code, not throwaway scripts, so the cost of an empty folder is zero and the cost of flat-on-something-that-grows is duplicate modules and tangled parallel worktrees.
+
+Task-1 must scaffold:
+
+```
+app/
+├── routers/          # HTTP routing only — thin handlers, delegate to services
+├── services/         # Business logic, orchestration, async jobs, streaming
+├── repositories/     # Persistence — DB access, external APIs
+├── models.py         # Domain dataclasses / enums
+├── schemas.py        # Pydantic request/response schemas
+└── deps.py           # FastAPI dependency injection
+```
+
+Each folder gets an `__init__.py` even if empty. A router that calls a service which calls a repository is the norm — don't inline persistence into routers or business logic into repositories.
+
+Name target files in downstream task descriptions (e.g., "Edit `app/routers/movies.py`, add `search_movies` routing through `app/services/movie_service.py`"). Parallel worktree tasks especially need this — otherwise each worktree invents its own filename and you end up with duplicate modules.
+
+This is a hard rule, not a judgment call. Don't debate whether the project "needs" layers — it does.
+
 ## Output: tasks.json
 
 Write a `tasks.json` file in the project root with this structure:

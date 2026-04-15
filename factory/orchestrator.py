@@ -1494,10 +1494,8 @@ async def _process_batch_with_worktrees(
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            LOG.warning(
-                "Rebase failed for %s — recreating branch from main",
-                task_branch,
-            )
+            # Abort rebase to restore the branch to its pre-rebase state —
+            # commits are preserved, not dropped.
             await asyncio.create_subprocess_exec(
                 "git",
                 "rebase",
@@ -1506,55 +1504,36 @@ async def _process_batch_with_worktrees(
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            # Get the task's commits (not on origin/main)
+            # Capture the conflict files so the human fixer has context.
             proc = await asyncio.create_subprocess_exec(
                 "git",
-                "log",
-                "origin/main..HEAD",
-                "--format=%H",
-                "--reverse",
-                cwd=wt_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            commits = stdout.decode().strip().splitlines()
-
-            # Reset to origin/main and cherry-pick commits
-            await asyncio.create_subprocess_exec(
-                "git",
-                "reset",
-                "--hard",
+                "diff",
+                "--name-only",
+                "--diff-filter=U",
                 "origin/main",
                 cwd=wt_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            for commit_hash in commits:
-                proc = await asyncio.create_subprocess_exec(
-                    "git",
-                    "cherry-pick",
-                    commit_hash,
-                    cwd=wt_dir,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
-                if proc.returncode != 0:
-                    # Skip conflicting commit, accept theirs
-                    await asyncio.create_subprocess_exec(
-                        "git",
-                        "cherry-pick",
-                        "--abort",
-                        cwd=wt_dir,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    LOG.warning(
-                        "Skipped conflicting commit %s for %s",
-                        commit_hash[:8],
-                        task_branch,
-                    )
+            conflict_stdout, _ = await proc.communicate()
+            conflict_files = conflict_stdout.decode().strip() or "(unknown)"
+            stderr_text = stderr.decode().strip() if stderr else ""
+            LOG.warning(
+                "Rebase failed for %s — escalating as merge conflict",
+                task_branch,
+            )
+            feedback_path = Path(wt_dir) / "feedback.md"
+            feedback_path.write_text(
+                "# Merge Conflict\n\n"
+                f"Task branch `{task_branch}` could not rebase onto "
+                "`origin/main` after a sibling task merged first.\n\n"
+                f"## Conflicting files\n\n{conflict_files}\n\n"
+                "## Rebase stderr\n\n"
+                f"```\n{stderr_text}\n```\n\n"
+                "The branch commits are intact. Resolve the conflict "
+                "locally, then push and merge the draft PR.\n"
+            )
+            task.status = "failed"
 
         wt_ctx = JobContext(
             repo_name=ctx.repo_name,
@@ -1626,9 +1605,10 @@ async def _finalize_task(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        await proc.communicate()
+        _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            # Rebase failed — reset and cherry-pick
+            # Abort rebase so the branch keeps its commits, then escalate
+            # as a merge conflict instead of silently dropping work.
             await asyncio.create_subprocess_exec(
                 "git",
                 "rebase",
@@ -1639,44 +1619,44 @@ async def _finalize_task(
             )
             proc = await asyncio.create_subprocess_exec(
                 "git",
-                "log",
-                "origin/main..HEAD",
-                "--format=%H",
-                "--reverse",
-                cwd=ctx.working_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            commits = stdout.decode().strip().splitlines()
-            await asyncio.create_subprocess_exec(
-                "git",
-                "reset",
-                "--hard",
+                "diff",
+                "--name-only",
+                "--diff-filter=U",
                 "origin/main",
                 cwd=ctx.working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            for commit_hash in commits:
-                proc = await asyncio.create_subprocess_exec(
-                    "git",
-                    "cherry-pick",
-                    commit_hash,
-                    cwd=ctx.working_dir,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
-                if proc.returncode != 0:
-                    await asyncio.create_subprocess_exec(
-                        "git",
-                        "cherry-pick",
-                        "--abort",
-                        cwd=ctx.working_dir,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
+            conflict_stdout, _ = await proc.communicate()
+            conflict_files = conflict_stdout.decode().strip() or "(unknown)"
+            stderr_text = stderr.decode().strip() if stderr else ""
+            LOG.warning(
+                "Rebase failed for %s — escalating as merge conflict",
+                task_branch,
+            )
+            feedback_path = Path(ctx.working_dir) / "feedback.md"
+            feedback_path.write_text(
+                "# Merge Conflict\n\n"
+                f"Task branch `{task_branch}` could not rebase onto "
+                "`origin/main`.\n\n"
+                f"## Conflicting files\n\n{conflict_files}\n\n"
+                "## Rebase stderr\n\n"
+                f"```\n{stderr_text}\n```\n"
+            )
+            task.status = "failed"
+            # Fall through to the failed-task branch below.
+            await _finalize_task(
+                task,
+                ctx,
+                github,
+                emitter,
+                state,
+                repo_name,
+                issue_number,
+                task_branch,
+                merge_mode,
+            )
+            return
 
         # Check if branch has any commits ahead of main
         proc = await asyncio.create_subprocess_exec(

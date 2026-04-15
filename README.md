@@ -178,10 +178,10 @@ Each task starts from the latest main, so it always has the previous task's code
 
 ## Failure Recovery
 
-When a task fails after 5 red-green rounds:
+When a task fails after 5 red-green rounds, **or** when a parallel-worktree branch cannot rebase cleanly onto main after a sibling task merged first:
 
-1. Opens a **draft PR** with partial work
-2. Creates a **needs-human issue** with failure details and last QA feedback
+1. Opens a **draft PR** with partial work (commits preserved — no silent drop)
+2. Creates a **needs-human issue** with failure details and last QA feedback (or merge-conflict diagnostics)
 3. Continues with remaining tasks
 4. You **comment** on the issue with guidance
 5. Run `dark-factory retry` — your comment is injected into the Developer's prompt
@@ -211,10 +211,11 @@ dark-factory/
 │   │   ├── fullstack/      # FastAPI + React scaffold
 │   │   └── terraform/      # Terraform IaC scaffold
 │   └── prompts/
+│       ├── _principles.md  # Shared Karpathy-derived principles (prepended to every agent)
 │       ├── planner.md      # Architect rules & personality
 │       ├── evaluator.md    # QA Engineer rules & personality
 │       └── generator.md    # Developer rules & personality
-├── tests/                  # Unit tests (353 passing)
+├── tests/                  # Unit tests (408 passing)
 ├── dashboard/
 │   └── frontend/           # React + TypeScript + Tailwind dashboard
 ├── DESIGN.md               # Full design document

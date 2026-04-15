@@ -32,6 +32,7 @@ Build an autonomous AI coding pipeline ("dark factory") where AI agents handle t
 6. **Hard permission boundaries** — Generator can't touch tests, Evaluator can't touch source
 7. **Max iteration cap** — 5 rounds then escalate to human
 8. **Start simple, remove complexity** — as models improve, delete harness code
+9. **Shared principles prepended to every agent** — `factory/prompts/_principles.md` (derived from Andrej Karpathy's observations on LLM coding failure modes) is loaded by `load_prompt()` and injected before each role prompt, so every agent inherits the same guidelines: think before doing, simplicity first, surgical changes, goal-driven execution
 
 ## 3. Architecture Overview
 
@@ -81,6 +82,17 @@ Not all failures are equal. The orchestrator escalates through increasingly aggr
 | 4 | Enhanced feedback | QA includes full tracebacks, root cause analysis, explicit "don't repeat X" |
 | 5 | Fresh approach | Developer prompted to try a fundamentally different approach, not patch the previous one |
 | Re-run | Auto-reset | Failed tasks reset to pending with fresh 5 rounds — re-running the job retries automatically |
+
+### Architect Guidelines
+
+The Architect's `planner.md` enforces:
+
+- **Layered architecture for any backend service** — task-1 scaffolds `app/routers/`, `app/services/`, `app/repositories/`, `models.py`, `schemas.py`, `deps.py`. Every folder gets an `__init__.py`. This is a hard rule, not a judgment call: DF produces production code and the cost of an empty folder is zero, while the cost of flat-on-something-that-grows is duplicate modules from parallel worktrees.
+- **Name target files for parallel worktrees** — when multiple tasks in a batch run in parallel, the task description must specify the module each should edit (e.g., "add `search_movies` to `app/routers/movies.py` via `app/services/movie_service.py`"), so worktrees don't independently invent overlapping filenames.
+
+The QA Engineer's `evaluator.md` adds:
+
+- **Realistic fixtures** — when the change processes user-supplied data (CSV, JSON, uploads), tests must include realistic fixtures, not only developer-chosen toy inputs. Toy inputs miss edge cases that only appear in real data.
 
 ### Common Failure Modes
 
@@ -242,14 +254,17 @@ dark-factory/
 │   │   ├── evaluator.py               # Spawns QA (contracts, red, review, regression)
 │   │   └── generator.py               # Spawns Developer (scaffold + implementation)
 │   ├── prompts/
+│   │   ├── _principles.md             # Karpathy-derived principles, prepended to every agent
 │   │   ├── planner.md                 # Architect personality + rules
 │   │   ├── evaluator.md               # QA Engineer personality + rules
 │   │   └── generator.md               # Developer personality + rules
 │   └── templates/
 │       ├── __init__.py                # Template engine (apply_template)
-│       └── fastapi/                   # FastAPI project scaffold
+│       ├── fastapi/                   # FastAPI project scaffold — layered app/ (routers, services, repositories)
+│       ├── fullstack/                 # FastAPI + React scaffold
+│       └── terraform/                 # Terraform IaC scaffold
 │
-├── tests/                             # Unit tests (42 passing)
+├── tests/                             # Unit tests (408 passing)
 │   ├── test_orchestrator.py
 │   ├── test_agents.py
 │   ├── test_github_client.py
