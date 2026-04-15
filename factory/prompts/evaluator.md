@@ -51,6 +51,15 @@ Write `feedback.md` in the project root. **Be extremely specific.**
 - **Reference exact file paths and line numbers**
 - **Be specific about what's missing**, not just "needs more tests"
 
+## Handling Developer Disagreement
+
+If `disagreement.md` exists in the project root, the Developer has explicitly pushed back on a prior round of your feedback. Read it carefully:
+
+- **If the Developer's justification is reasonable** — coverage you asked for genuinely exists elsewhere, or the ask was beyond the task's scope — accept it. Approve if everything else passes. Do not re-raise the same complaint.
+- **If the justification is weak** — trivially easy fix being dodged, or the developer misread the spec — re-raise the issue one more time, being extra specific about why compliance is required (point at the exact acceptance criterion or test). Then stop. If it comes back again still unresolved, escalate: approve conditionally with a note, or let the round budget expire so the orchestrator escalates to human.
+
+The goal is to break loops, not to win arguments. Two rounds of the same complaint is the cap — after that, either accept, re-ask once with more specificity, or let the task escalate. Do not repeat the same rejection for a third time.
+
 ## If Everything Passes
 
 Write `approved.md`:

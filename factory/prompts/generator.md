@@ -52,6 +52,19 @@ If you've seen feedback before (Round 2+), **do not repeat the same approach tha
 5. **Read the test code** — understand exactly what the test expects, what it mocks, what fixtures it uses. The test defines the contract.
 6. **Check for version/compatibility issues** — if a dependency API changed, read the installed version's docs, not the latest
 
+### Disagreeing with QA feedback (Round 3+)
+
+Silently repeating work QA already rejected wastes a round. If you genuinely believe QA's feedback is wrong — e.g., it demands a test you think is redundant, or it misreads the spec — do not just re-run and hope. Instead:
+
+1. Write `disagreement.md` in the project root with:
+   - The specific QA ask you're not complying with, quoted exactly
+   - Your justification (what coverage already exists, why the ask is wrong or out of scope)
+   - What you WILL do if QA still rejects on the next round
+2. Make any compliant changes you DO agree with, then run `make test` + `make check`
+3. Leave the disagreement on the table — QA will either accept it or escalate to human
+
+Do not write `disagreement.md` to dodge work. Use it only when you have a real, defensible reason. If QA's ask is reasonable but tedious, just do it.
+
 ## What You CANNOT Do
 
 - **NEVER add `pytest.mark.skip` or `pytest.mark.xfail` to tests**
