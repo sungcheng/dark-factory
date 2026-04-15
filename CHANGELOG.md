@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.6.0] - 2026-04-15
+
+- fix: remove false-positive skip heuristic (closes #41)
+- feat: auto-version DF on every push to main
+- Fix ruff E501 in templates/__init__.py
+- Fix rebase-loss; require layered architecture for backend services
+- Sync fullstack STYLEGUIDE with fastapi
+- Propagate cleaned CONVENTIONS.md to all template variants
+- Rewrite fastapi template with layered architecture; add shared principles
+- Suppress branch protection warning on free plan
+- Handle empty-diff PR creation gracefully
+- Fix Developer ignoring QA feedback, handle CI check API permissions
+- Add auto-versioning skill and CD publish pipeline
+- Wait for CI checks to pass before merging PRs
+- Fix fastapi template: add missing pydantic-settings dependency
+- Fix pre-check skip logic, add DF artifacts to all template gitignores
+- Fix template variable substitution and loosen regression scope guard
+- Add manual merge mode with 30s polling
+- Add cost tracking and context validation
+- Clean up dead code and move dynamic imports to top-level
+- Add skills system: 12 reusable capabilities across 4 lifecycle phases
+- Replace Staff Engineer with QA Lead, add reflection for simple tasks
+- Add CI workflow templates for all project types
+- Fix CI: install Node.js and dashboard frontend deps
+- Inject role-specific standards instead of agents reading full docs
+- Fix loose ends: restore pre-check, update Developer description
+- Simplify agent flow: Developer writes code + tests, QA only reviews
+- Add health report to detect AI degradation on large codebases
+- Enforce layered context files (ARCHITECTURE.md, CONTEXT.md)
+- Add CONVENTIONS.md — org-wide engineering standards
+- Add STYLEGUIDE.md to project templates and wire into all agents
+- Prevent DF artifacts from being committed to target repos
+- Enforce coding standards and test hygiene in agent prompts
+- Add rule: make test must pass after every task
+- Auto-cleanup stale PRs on job start and in cleanup command
+- Remove since timestamp fallback — job_id scoping is sufficient
+- Scope fallback event queries by job created_at timestamp
+- Fall back to task_id matching when no events have job_id
+- Scope dashboard events by job_id to prevent cross-run collisions
+- Fix status bar task counts to only show active job
+- Only show events/tasks from active jobs on dashboard
+- Fix elapsed time using latest job_started event, not earliest
+- Clean up stale state files on job start
+- Auto-abandon stale dashboard jobs when new job starts
+- Add automatic orphan cleanup on job start and failure
+- fix: skip PR creation when task branch has no new commits
+- fix: rebase task branch onto origin/main before push in _finalize_task
+- fix: use cherry-pick instead of merge when rebase fails in worktrees
+- fix: install frontend deps in worktrees, detect missing commands
+- fix: rebase worktree branches before merge to avoid 405 conflicts
+- fix: clean up stale branches before creating worktrees
+
+
 All notable changes to Dark Factory will be documented in this file.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
