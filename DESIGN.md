@@ -910,6 +910,16 @@ PHASE 4 — Kubernetes (Future)
 └── Deliverable: GitOps deployment pipeline
 ```
 
+### GitHub Actions Workflows (for the dark-factory repo itself)
+
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `ci.yml` | push / PR to `main` | Runs `ruff check`, `ruff format --check`, `pytest tests/` |
+| `auto-version.yml` | push to `main` | Parses commits since last `v*` tag, bumps `__version__` + CHANGELOG, commits with `[skip ci]`. Skips its own bump commits to avoid loops. |
+| `release.yml` | push to `main` | Watches for `__version__` change; cuts git tag + GitHub Release with the new CHANGELOG section |
+
+The bump logic lives in `scripts/auto_version.py` (stateless Python, no async), distinct from `factory/skills/version_bump.py` (which is the POST_JOB skill that bumps *target* repos during DF jobs). Conventional commits drive the bump type: `feat:` → minor, `fix:`/other → patch, `!:` or `BREAKING CHANGE` → major.
+
 ## 17. Cost Breakdown
 
 ### Monthly Costs
