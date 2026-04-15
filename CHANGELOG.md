@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.0] - 2026-04-15
+
+- feat: add YAML pipeline engine (Phase 1)
+- refactor: split bump and release back into separate workflows
+
+
 ## [0.7.1] - 2026-04-15
 
 - refactor: merge release.yml into auto-version.yml
