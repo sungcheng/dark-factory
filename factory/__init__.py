@@ -1,3 +1,3 @@
 """Dark Factory — autonomous AI coding pipeline."""
 
-__version__ = "0.7.0"
+__version__ = "0.7.1"

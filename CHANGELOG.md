@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.1] - 2026-04-15
+
+- refactor: merge release.yml into auto-version.yml
+
+
 ## [0.7.0] - 2026-04-15
 
 - fix: break QA↔Dev deadlock loops via explicit disagreement protocol (closes #43)
