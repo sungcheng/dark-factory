@@ -1,4 +1,4 @@
-name: Auto Version
+name: Auto Version & Release
 
 on:
   push:
@@ -11,8 +11,7 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
-    # Skip our own bump commits to prevent loops. [skip ci] in the commit
-    # message blocks most GitHub triggers, but this guards the rest.
+    # Skip our own bump commits to prevent loops.
     if: "!contains(github.event.head_commit.message, 'chore: bump version to') && !contains(github.event.head_commit.message, '[skip ci]')"
     permissions:
       contents: write
@@ -36,15 +35,40 @@ jobs:
             new_version=$(echo "$output" | sed -n 's/^BUMPED: .* -> \([^ ]*\) .*/\1/p')
             echo "bumped=true" >> "$GITHUB_OUTPUT"
             echo "version=$new_version" >> "$GITHUB_OUTPUT"
+            echo "tag=v$new_version" >> "$GITHUB_OUTPUT"
           else
             echo "bumped=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit and push
+      - name: Commit bump and tag
         if: steps.bump.outputs.bumped == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add factory/__init__.py CHANGELOG.md
           git commit -m "chore: bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git tag -a "${{ steps.bump.outputs.tag }}" -m "Release ${{ steps.bump.outputs.tag }}"
           git push origin main
+          git push origin "${{ steps.bump.outputs.tag }}"
+
+      - name: Extract release notes
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          python -c "
+          import re
+          content = open('CHANGELOG.md').read()
+          version = '${{ steps.bump.outputs.version }}'
+          pattern = rf'## \[{re.escape(version)}\].*?\n(.*?)(?=\n## \[|\Z)'
+          match = re.search(pattern, content, re.DOTALL)
+          body = match.group(1).strip() if match else 'Release v' + version
+          open('/tmp/release_body.md', 'w').write(body)
+          "
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "Dark Factory ${{ steps.bump.outputs.tag }}" \
+            --notes-file /tmp/release_body.md
