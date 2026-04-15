@@ -306,6 +306,36 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 | No hardcoded secrets | Env vars only, scanned pre and post |
 | Developer reads existing code first | Extend, don't duplicate |
 
+## Pipeline Engine (Phase 1)
+
+Alongside the legacy `orchestrator.py`, Dark Factory has a YAML-defined graph execution engine. Pipelines are plain YAML files in `pipelines/`; the engine walks nodes through edges and dispatches each node to a handler in `factory/pipeline/handlers/`.
+
+```bash
+dark-factory run-pipeline pipelines/demo.yaml
+```
+
+A pipeline file looks like:
+
+```yaml
+name: demo
+start: check_git
+nodes:
+  - id: check_git
+    handler: shell
+    params: { command: git --version }
+  - id: report_ok
+    handler: shell
+    params: { command: echo "ok" }
+edges:
+  - from: check_git
+    to: report_ok
+    when: status == "success"
+```
+
+Handlers today: `agent` (spawn Claude Code subprocess), `shell` (run a command), `skill` (run a factory skill). Adding a handler = one file + one registry entry. Adding a pipeline = one YAML file; no Python changes.
+
+Phase 1 runs pipelines independently. Phase 2 will add sub-pipeline composition (one pipeline invoking another) and parallel fan-out. Phase 3 migrates the DF job flow itself off `orchestrator.py` onto a pipeline YAML.
+
 ## Release Flow
 
 Dark Factory auto-releases itself when material changes land on `main`:

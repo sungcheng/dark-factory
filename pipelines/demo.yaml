@@ -1,0 +1,44 @@
+# Demo pipeline — exercises the graph engine with real handlers (no
+# Claude Code subprocess, no GitHub). Use to sanity-check the engine
+# without spending tokens:
+#
+#   uv run python -m factory.pipeline.runner pipelines/demo.yaml
+#
+# Shows: sequential shell commands, conditional edges, retry on failure.
+
+name: demo
+description: Minimal pipeline exercising shell + conditional routing
+start: check_git
+
+nodes:
+  - id: check_git
+    handler: shell
+    params:
+      command: git --version
+
+  - id: list_tree
+    handler: shell
+    params:
+      command: ls factory
+
+  - id: report_ok
+    handler: shell
+    params:
+      command: echo "demo pipeline finished cleanly"
+
+  - id: report_fail
+    handler: shell
+    params:
+      command: echo "demo pipeline ended in failure path"
+
+edges:
+  - from: check_git
+    to: list_tree
+    when: status == "success"
+
+  - from: check_git
+    to: report_fail
+    when: status == "failed"
+
+  - from: list_tree
+    to: report_ok

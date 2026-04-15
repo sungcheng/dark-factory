@@ -97,6 +97,40 @@ def retry(repo: str, issue: int, model: str | None) -> None:
         sys.exit(1)
 
 
+@main.command("run-pipeline")
+@click.argument("yaml_path", type=click.Path(exists=True))
+@click.option(
+    "--working-dir",
+    "-d",
+    default=".",
+    help="Working directory for the pipeline (default: cwd)",
+)
+def run_pipeline_cmd(yaml_path: str, working_dir: str) -> None:
+    """Run a YAML pipeline through the graph engine.
+
+    Phase-1 entry point for graph-based execution, alongside the
+    legacy `start` command. Use this to run pipelines defined in
+    `pipelines/*.yaml`.
+
+    Examples:
+        dark-factory run-pipeline pipelines/demo.yaml
+        dark-factory run-pipeline pipelines/hotfix.yaml -d /tmp/work
+    """
+    from factory.pipeline.engine import PipelineContext
+    from factory.pipeline.engine import run_pipeline
+    from factory.pipeline.schema import Pipeline
+
+    pipeline = Pipeline.from_yaml(yaml_path)
+    ctx = PipelineContext(working_dir=working_dir)
+    click.echo(f"Running pipeline {pipeline.name} from {yaml_path}")
+    try:
+        asyncio.run(run_pipeline(pipeline, ctx))
+        click.echo("Pipeline completed.")
+    except Exception as e:
+        click.echo(f"Pipeline failed: {e}", err=True)
+        sys.exit(1)
+
+
 @main.command()
 @click.option("--repo", "-r", required=True, help="Target repo name")
 @click.option(
