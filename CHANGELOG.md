@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.12.3] - 2026-04-16
+
+- docs: link StrongDM's software-factory blog post for attribution
+- docs: attribute StrongDM as inspiration without linking their repo
+
+
 ## [0.12.2] - 2026-04-16
 
 - docs: attribute StrongDM as inspiration without linking their repo
