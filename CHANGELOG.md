@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.1] - 2026-04-16
+
+- fix(pipeline): don't treat 'some tasks failed' as a hard engine abort
+
+
 ## [0.13.0] - 2026-04-16
 
 - feat: add Conflict Resolver agent for post-hoc rebase conflict merging
