@@ -178,13 +178,14 @@ Each task starts from the latest main, so it always has the previous task's code
 
 ## Failure Recovery
 
-When a task fails after 5 red-green rounds, **or** when a parallel-worktree branch cannot rebase cleanly onto main after a sibling task merged first:
+When a task fails after 5 red-green rounds, **or** when a parallel-worktree branch cannot rebase cleanly onto main:
 
-1. Opens a **draft PR** with partial work (commits preserved — no silent drop)
-2. Creates a **needs-human issue** with failure details and last QA feedback (or merge-conflict diagnostics)
-3. Continues with remaining tasks
-4. You **comment** on the issue with guidance
-5. Run `dark-factory retry` — your comment is injected into the Developer's prompt
+1. **Rebase conflicts first try a Conflict Resolver agent** — reads the conflicted files, merges both sides, continues the rebase. If resolution succeeds and tests still pass, the task proceeds normally. If the resolver fails or breaks tests, falls back to the escalation path below.
+2. Opens a **draft PR** with partial work (commits preserved — no silent drop)
+3. Creates a **needs-human issue** with failure details and last QA feedback (or merge-conflict diagnostics)
+4. Continues with remaining tasks
+5. You **comment** on the issue with guidance
+6. Run `dark-factory retry` — your comment is injected into the Developer's prompt
 
 Jobs **auto-resume** if they crash. State is saved to `~/.dark-factory/state/`.
 

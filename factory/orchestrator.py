@@ -1398,6 +1398,7 @@ async def _process_single_task_in_batch(
         issue_number,
         task_branch,
         merge_mode,
+        model,
     )
 
 
@@ -1560,46 +1561,16 @@ async def _process_batch_with_worktrees(
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            # Abort rebase to restore the branch to its pre-rebase state —
-            # commits are preserved, not dropped.
-            await asyncio.create_subprocess_exec(
-                "git",
-                "rebase",
-                "--abort",
-                cwd=wt_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            # Capture the conflict files so the human fixer has context.
-            proc = await asyncio.create_subprocess_exec(
-                "git",
-                "diff",
-                "--name-only",
-                "--diff-filter=U",
-                "origin/main",
-                cwd=wt_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            conflict_stdout, _ = await proc.communicate()
-            conflict_files = conflict_stdout.decode().strip() or "(unknown)"
             stderr_text = stderr.decode().strip() if stderr else ""
-            LOG.warning(
-                "Rebase failed for %s — escalating as merge conflict",
-                task_branch,
+            resolved = await _try_resolve_rebase_conflict(
+                wt_dir=wt_dir,
+                task=task,
+                task_branch=task_branch,
+                rebase_stderr=stderr_text,
+                model=model,
             )
-            feedback_path = Path(wt_dir) / "feedback.md"
-            feedback_path.write_text(
-                "# Merge Conflict\n\n"
-                f"Task branch `{task_branch}` could not rebase onto "
-                "`origin/main` after a sibling task merged first.\n\n"
-                f"## Conflicting files\n\n{conflict_files}\n\n"
-                "## Rebase stderr\n\n"
-                f"```\n{stderr_text}\n```\n\n"
-                "The branch commits are intact. Resolve the conflict "
-                "locally, then push and merge the draft PR.\n"
-            )
-            task.status = "failed"
+            if not resolved:
+                task.status = "failed"
 
         wt_ctx = JobContext(
             repo_name=ctx.repo_name,
@@ -1618,6 +1589,7 @@ async def _process_batch_with_worktrees(
             issue_number,
             task_branch,
             merge_mode,
+            model,
         )
 
         # Remove worktree
@@ -1649,6 +1621,7 @@ async def _finalize_task(
     issue_number: int,
     task_branch: str,
     merge_mode: str = "auto",
+    model: str | None = None,
 ) -> None:
     """Push, PR, and merge a completed task — or create draft PR for failures."""
     if task.status == "completed":
@@ -1673,55 +1646,31 @@ async def _finalize_task(
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            # Abort rebase so the branch keeps its commits, then escalate
-            # as a merge conflict instead of silently dropping work.
-            await asyncio.create_subprocess_exec(
-                "git",
-                "rebase",
-                "--abort",
-                cwd=ctx.working_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            proc = await asyncio.create_subprocess_exec(
-                "git",
-                "diff",
-                "--name-only",
-                "--diff-filter=U",
-                "origin/main",
-                cwd=ctx.working_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            conflict_stdout, _ = await proc.communicate()
-            conflict_files = conflict_stdout.decode().strip() or "(unknown)"
             stderr_text = stderr.decode().strip() if stderr else ""
-            LOG.warning(
-                "Rebase failed for %s — escalating as merge conflict",
-                task_branch,
+            resolved = await _try_resolve_rebase_conflict(
+                wt_dir=ctx.working_dir,
+                task=task,
+                task_branch=task_branch,
+                rebase_stderr=stderr_text,
+                model=model,
             )
-            feedback_path = Path(ctx.working_dir) / "feedback.md"
-            feedback_path.write_text(
-                "# Merge Conflict\n\n"
-                f"Task branch `{task_branch}` could not rebase onto "
-                "`origin/main`.\n\n"
-                f"## Conflicting files\n\n{conflict_files}\n\n"
-                "## Rebase stderr\n\n"
-                f"```\n{stderr_text}\n```\n"
-            )
-            task.status = "failed"
-            # Fall through to the failed-task branch below.
-            await _finalize_task(
-                task,
-                ctx,
-                github,
-                emitter,
-                state,
-                repo_name,
-                issue_number,
-                task_branch,
-                merge_mode,
-            )
+            if not resolved:
+                # Escalation path: mark failed and take the draft-PR branch.
+                task.status = "failed"
+                await _finalize_task(
+                    task,
+                    ctx,
+                    github,
+                    emitter,
+                    state,
+                    repo_name,
+                    issue_number,
+                    task_branch,
+                    merge_mode,
+                    model,
+                )
+                return
+            # Resolved — fall through and push/PR/merge as normal.
             return
 
         # Check if branch has any commits ahead of main
@@ -2263,6 +2212,144 @@ def _is_simple_issue(title: str, body: str) -> bool:
                 return True
 
     return False
+
+
+async def _try_resolve_rebase_conflict(
+    wt_dir: str,
+    task: TaskInfo,
+    task_branch: str,
+    rebase_stderr: str,
+    model: str | None,
+) -> bool:
+    """Attempt to resolve a rebase conflict with an AI agent.
+
+    On entry: the worktree is mid-rebase with unresolved conflict
+    markers in the working tree. On success: conflicts resolved, rebase
+    continued, tests pass, True returned. On failure: rebase is
+    aborted, feedback.md is written, False returned (caller marks task
+    as failed and escalates to draft-PR + needs-human).
+    """
+    from factory.agents.conflict_resolver import run_conflict_resolver
+
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "diff",
+        "--name-only",
+        "--diff-filter=U",
+        cwd=wt_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    conflict_stdout, _ = await proc.communicate()
+    conflicted_files = [
+        f.strip() for f in conflict_stdout.decode().splitlines() if f.strip()
+    ]
+
+    async def _escalate(reason: str) -> bool:
+        LOG.warning(
+            "Conflict resolution failed for %s (%s) — escalating",
+            task_branch,
+            reason,
+        )
+        await asyncio.create_subprocess_exec(
+            "git",
+            "rebase",
+            "--abort",
+            cwd=wt_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        feedback_path = Path(wt_dir) / "feedback.md"
+        feedback_path.write_text(
+            "# Merge Conflict\n\n"
+            f"Task branch `{task_branch}` could not rebase onto "
+            "`origin/main` after a sibling task merged first. An "
+            f"automated resolution attempt also failed: {reason}.\n\n"
+            f"## Conflicting files\n\n"
+            + "\n".join(f"- {f}" for f in conflicted_files)
+            + "\n\n## Rebase stderr\n\n"
+            f"```\n{rebase_stderr}\n```\n\n"
+            "The branch commits are intact. Resolve the conflict "
+            "locally, then push and merge the draft PR.\n"
+        )
+        return False
+
+    if not conflicted_files:
+        return await _escalate("no conflicted files found")
+
+    LOG.info(
+        "⚖️ Rebase failed for %s — spawning Conflict Resolver on %d file(s)",
+        task_branch,
+        len(conflicted_files),
+    )
+    try:
+        await run_conflict_resolver(
+            task_title=task.title,
+            task_description=task.description,
+            conflicted_files=conflicted_files,
+            rebase_stderr=rebase_stderr,
+            working_dir=wt_dir,
+            model=model,
+        )
+    except Exception as exc:
+        return await _escalate(f"resolver agent raised: {exc}")
+
+    # Verify no conflict markers remain in any of the originally-conflicted
+    # files. `git diff --diff-filter=U` won't tell us this because the
+    # files are still in git's "unmerged" state until we `git add` them —
+    # so check the file contents directly.
+    for f in conflicted_files:
+        fp = Path(wt_dir) / f
+        if not fp.exists():
+            continue  # resolver deleted it; git add will handle
+        content = fp.read_text(errors="replace")
+        if "<<<<<<<" in content or ">>>>>>>" in content:
+            return await _escalate(f"resolver left conflict markers in {f}")
+
+    # Stage resolver's output and continue the rebase.
+    await asyncio.create_subprocess_exec(
+        "git",
+        "add",
+        "-A",
+        cwd=wt_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    continue_proc = await asyncio.create_subprocess_exec(
+        "git",
+        "-c",
+        "core.editor=true",
+        "rebase",
+        "--continue",
+        cwd=wt_dir,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, continue_err = await continue_proc.communicate()
+    if continue_proc.returncode != 0:
+        return await _escalate(
+            f"rebase --continue failed: {continue_err.decode().strip()[:200]}",
+        )
+
+    # Sanity-check: tests should still pass after the merge.
+    tests_passed, test_output = await _run_tests_with_check(wt_dir)
+    if not tests_passed:
+        # Revert the resolution commit and escalate.
+        await asyncio.create_subprocess_exec(
+            "git",
+            "reset",
+            "--hard",
+            "HEAD~1",
+            cwd=wt_dir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        return await _escalate(
+            f"tests failed after resolution: {test_output[:200]}",
+        )
+
+    LOG.info("✅ Conflict Resolver succeeded for %s", task_branch)
+    return True
 
 
 async def _has_tests(working_dir: str) -> bool:
