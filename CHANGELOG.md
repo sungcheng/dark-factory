@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.0] - 2026-04-16
+
+- feat: pipeline engine Phase 2 — subpipeline, parallel, loop handlers
+
+
 ## [0.9.0] - 2026-04-16
 
 - feat: add Arbiter agent for QA/Dev deadlock resolution; clean up prescriptive prompts
