@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.0] - 2026-04-16
+
+- feat: add Conflict Resolver agent for post-hoc rebase conflict merging
+
+
 ## [0.12.3] - 2026-04-16
 
 - docs: link StrongDM's software-factory blog post for attribution
