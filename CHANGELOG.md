@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.1] - 2026-04-16
+
+- fix: serialize parallel tasks that share target files (closes #42)
+
+
 ## [0.10.0] - 2026-04-16
 
 - feat: pipeline engine Phase 2 — subpipeline, parallel, loop handlers
