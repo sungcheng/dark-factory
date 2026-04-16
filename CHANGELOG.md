@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.2] - 2026-04-16
+
+- docs: attribute StrongDM as inspiration without linking their repo
+
+
 ## [0.12.1] - 2026-04-16
 
 - fix: correct EventEmitter import path in stage handlers
