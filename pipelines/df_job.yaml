@@ -44,6 +44,10 @@ nodes:
 
   - id: process_batches
     handler: process_batches
+    # If any task fails, stop gracefully — don't treat it as a hard engine
+    # abort. The `when: status == "success"` edge below means validation
+    # + QA Lead only run when every task merged.
+    retry: { max: 1, on_exhausted: continue }
 
   - id: post_merge_validation
     handler: post_merge_validation
