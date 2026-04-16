@@ -1,0 +1,8 @@
+# Small reusable sub-pipeline used by compose_demo.
+name: sub_b
+start: step
+nodes:
+  - id: step
+    handler: shell
+    params:
+      command: echo "sub_b step"

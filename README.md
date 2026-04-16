@@ -306,12 +306,13 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 | No hardcoded secrets | Env vars only, scanned pre and post |
 | Developer reads existing code first | Extend, don't duplicate |
 
-## Pipeline Engine (Phase 1)
+## Pipeline Engine
 
 Alongside the legacy `orchestrator.py`, Dark Factory has a YAML-defined graph execution engine. Pipelines are plain YAML files in `pipelines/`; the engine walks nodes through edges and dispatches each node to a handler in `factory/pipeline/handlers/`.
 
 ```bash
 dark-factory run-pipeline pipelines/demo.yaml
+dark-factory run-pipeline pipelines/compose_demo.yaml
 ```
 
 A pipeline file looks like:
@@ -332,9 +333,26 @@ edges:
     when: status == "success"
 ```
 
-Handlers today: `agent` (spawn Claude Code subprocess), `shell` (run a command), `skill` (run a factory skill). Adding a handler = one file + one registry entry. Adding a pipeline = one YAML file; no Python changes.
+Handlers:
+- `agent` — spawn a Claude Code subprocess (Architect, Developer, QA, Arbiter)
+- `shell` — run a shell command
+- `skill` — run a registered factory skill
+- `subpipeline` — invoke another pipeline YAML as one node
+- `parallel` — fan out N sub-pipelines concurrently (`wait_for: all|any`)
+- `loop` — repeat a body pipeline until `exit_when` matches or `max_iterations` hits
 
-Phase 1 runs pipelines independently. Phase 2 will add sub-pipeline composition (one pipeline invoking another) and parallel fan-out. Phase 3 migrates the DF job flow itself off `orchestrator.py` onto a pipeline YAML.
+Composition example (Phase 2):
+
+```yaml
+- id: red_green
+  handler: loop
+  params:
+    body: pipelines/red_green_body.yaml
+    max_iterations: 5
+    exit_when: status == "approved"
+```
+
+Adding a handler = one file + one registry entry. Adding a pipeline = one YAML file; no Python changes. Phase 3 will migrate DF's full job flow onto a pipeline YAML and retire the legacy orchestrator pipeline logic.
 
 ## Release Flow
 

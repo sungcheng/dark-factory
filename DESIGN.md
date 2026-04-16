@@ -910,17 +910,17 @@ PHASE 4 — Kubernetes (Future)
 └── Deliverable: GitOps deployment pipeline
 ```
 
-### Pipeline Engine (Phase 1)
+### Pipeline Engine
 
-The `orchestrator.py` is the current production path — a Python-defined pipeline with fixed stages (Architect → Developer → QA). A parallel **graph-based engine** lives in `factory/pipeline/` and is being built out in phases so future pipelines (hotfix, docs-only, security audit) can compose cleanly without growing the orchestrator.
+The `orchestrator.py` is the current production path — a Python-defined pipeline with fixed stages (Architect → Developer → QA). A parallel **graph-based engine** lives in `factory/pipeline/` and is being built out so future pipelines (hotfix, docs-only, security audit) can compose cleanly without growing the orchestrator.
 
 **Architecture:**
 
 | Piece | Role |
 |---|---|
 | `factory/pipeline/schema.py` | Pydantic models for `Pipeline`, `Node`, `Edge`, `NodeResult`, `RetryPolicy` |
-| `factory/pipeline/engine.py` | ~200 lines: walks the graph, evaluates `when` conditions on edges, handles retries, dispatches to handlers |
-| `factory/pipeline/handlers/` | Pluggable handler registry. Each handler is `async (node, ctx) -> NodeResult`. Today: `agent`, `shell`, `skill` |
+| `factory/pipeline/engine.py` | Walks the graph, evaluates `when` conditions on edges, handles retries, dispatches to handlers. Returns the last NodeResult for composition. |
+| `factory/pipeline/handlers/` | Pluggable handler registry. Each handler is `async (node, ctx) -> NodeResult`. Today: `agent`, `shell`, `skill`, `subpipeline`, `parallel`, `loop`. |
 | `pipelines/*.yaml` | Pipeline definitions. Each is a graph of nodes + edges; nodes reference handlers by name |
 
 **Core design decisions:**
@@ -929,11 +929,12 @@ The `orchestrator.py` is the current production path — a Python-defined pipeli
 2. **Handler registry as the boundary** — `HANDLERS` dict in `factory/pipeline/handlers/__init__.py` maps name → function. YAML names handlers by string; handlers implement the work.
 3. **Edge routing before retry escalation** — a failed node first tries outgoing edges for handling; only if no edge matches does `retry.on_exhausted` fire. This lets pipelines model "on failure, go to cleanup node" cleanly.
 4. **Per-node retry with configurable exhaustion policy** — `abort` (raise), `continue` (pass through), `escalate` (for future human-gate).
+5. **Composition handlers share context** — `subpipeline`, `parallel`, and `loop` all run child pipelines through the same `PipelineContext`. Children propagate their final NodeResult to the parent for edge routing. Loops tolerate child aborts by treating them as failed iterations.
 
 **Phase plan:**
 
-- **Phase 1 (current):** engine + handlers + standalone pipeline execution. `dark-factory run-pipeline pipelines/demo.yaml` works today.
-- **Phase 2:** sub-pipeline handler (one pipeline invokes another), parallel fan-out, loop handler for iterative flows (replaces hardcoded red-green loop).
+- **Phase 1:** engine + standalone pipeline execution (shipped).
+- **Phase 2:** composition — `subpipeline`, `parallel`, `loop` (shipped).
 - **Phase 3:** migrate DF's own job flow onto a pipeline YAML; delete the pipeline logic from `orchestrator.py`.
 
 ### GitHub Actions Workflows (for the dark-factory repo itself)

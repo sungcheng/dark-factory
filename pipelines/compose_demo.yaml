@@ -1,0 +1,37 @@
+# Composition demo — exercises subpipeline, parallel, and loop handlers.
+#
+#   uv run dark-factory run-pipeline pipelines/compose_demo.yaml
+#
+# Runs two child pipelines in parallel, then loops a body pipeline up to
+# 3 times until it "succeeds."
+
+name: compose_demo
+description: Exercises Phase 2 composite handlers
+start: parallel_checks
+
+nodes:
+  - id: parallel_checks
+    handler: parallel
+    params:
+      pipelines:
+        - pipelines/sub_a.yaml
+        - pipelines/sub_b.yaml
+      wait_for: all
+
+  - id: loop_until_done
+    handler: loop
+    params:
+      body: pipelines/sub_a.yaml
+      max_iterations: 3
+
+  - id: done
+    handler: shell
+    params:
+      command: echo "compose demo complete"
+
+edges:
+  - from: parallel_checks
+    to: loop_until_done
+    when: status == "success"
+  - from: loop_until_done
+    to: done

@@ -39,7 +39,7 @@ class PipelineContext:
     state: dict[str, Any] = field(default_factory=dict)
 
 
-def _eval_condition(expr: str, result: NodeResult) -> bool:
+def eval_condition(expr: str, result: NodeResult) -> bool:
     """Safely evaluate an edge `when` expression against a NodeResult.
 
     Supports a small grammar: `<field> <op> <literal>` where op is one
@@ -128,24 +128,32 @@ def _next_node_id(
 ) -> str | None:
     """Pick the first outgoing edge whose condition matches."""
     for edge in pipeline.outgoing(current.id):
-        if edge.when is None or _eval_condition(edge.when, result):
+        if edge.when is None or eval_condition(edge.when, result):
             return edge.to
     return None
 
 
-async def run_pipeline(pipeline: Pipeline, ctx: PipelineContext) -> None:
-    """Execute a pipeline end-to-end.
+async def run_pipeline(
+    pipeline: Pipeline,
+    ctx: PipelineContext,
+) -> NodeResult:
+    """Execute a pipeline end-to-end, returning the last node's result.
 
     A node's final result (after retries) is first checked against
     outgoing edges. If any edge matches, traversal continues through it.
     Only when the node ended in `failed` AND no edge matched does
     `retry.on_exhausted` decide whether to abort, continue, or escalate.
+
+    Composite handlers (subpipeline, parallel, loop) use the returned
+    result to propagate sub-pipeline status to their parent.
     """
     LOG.info("🏭 Running pipeline %s", pipeline.name)
     current_id: str | None = pipeline.start
+    last_result = NodeResult(status="success")
     while current_id:
         node = pipeline.node(current_id)
         result = await _execute_node(node, ctx)
+        last_result = result
         next_id = _next_node_id(pipeline, node, result)
 
         if next_id is None and result.status == "failed":
@@ -159,3 +167,4 @@ async def run_pipeline(pipeline: Pipeline, ctx: PipelineContext) -> None:
 
         current_id = next_id
     LOG.info("🏁 Pipeline %s complete", pipeline.name)
+    return last_result

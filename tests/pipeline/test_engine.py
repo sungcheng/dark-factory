@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from factory.pipeline.engine import PipelineContext
-from factory.pipeline.engine import _eval_condition
+from factory.pipeline.engine import eval_condition
 from factory.pipeline.engine import run_pipeline
 from factory.pipeline.handlers import HANDLERS
 from factory.pipeline.schema import Edge
@@ -163,12 +163,12 @@ async def test_engine_raises_on_unknown_handler() -> None:
 
 def test_condition_eval_supports_equality_and_inequality() -> None:
     r = NodeResult(status="success", data={"count": 7})
-    assert _eval_condition('status == "success"', r) is True
-    assert _eval_condition('status != "failed"', r) is True
-    assert _eval_condition("count == 7", r) is True
-    assert _eval_condition("count != 7", r) is False
+    assert eval_condition('status == "success"', r) is True
+    assert eval_condition('status != "failed"', r) is True
+    assert eval_condition("count == 7", r) is True
+    assert eval_condition("count != 7", r) is False
 
 
 def test_condition_eval_rejects_unsupported_operator() -> None:
     with pytest.raises(ValueError, match="Unsupported"):
-        _eval_condition("status > 5", NodeResult(status="success"))
+        eval_condition("status > 5", NodeResult(status="success"))
