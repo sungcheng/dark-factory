@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from github.Issue import Issue
 
-    from factory.emitter import EventEmitter
+    from factory.dashboard.emitter import EventEmitter
     from factory.github_client import GitHubClient
     from factory.guardrails import PreflightResult
     from factory.orchestrator import JobContext

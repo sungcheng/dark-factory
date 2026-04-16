@@ -29,7 +29,7 @@ LOG = logging.getLogger(__name__)
 
 async def job_setup_handler(node: Node, ctx: PipelineContext) -> NodeResult:
     """Initialize runtime: dashboard, health check, github client, state, issue."""
-    from factory.emitter import EventEmitter
+    from factory.dashboard.emitter import EventEmitter
     from factory.github_client import GitHubClient
     from factory.orchestrator import JobContext
     from factory.orchestrator import _check_claude_cli
