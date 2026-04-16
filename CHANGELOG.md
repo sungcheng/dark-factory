@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.0] - 2026-04-16
+
+- feat: pipeline engine Phase 4 — decompose run_job into 11 stage handlers
+
+
 ## [0.11.0] - 2026-04-16
 
 - feat: pipeline engine Phase 3 — df_job handler + --engine=graph CLI flag
