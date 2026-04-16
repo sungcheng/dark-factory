@@ -182,6 +182,102 @@ class TestGetReadyBatches:
         batches = list(get_ready_batches([]))
         assert batches == []
 
+    def test_shared_file_tasks_serialized(self) -> None:
+        """Tasks in the same dep batch that claim overlapping files run serially."""
+        tasks = [
+            TaskInfo(
+                id="t1",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+                target_files=["app/schemas.py", "app/routers/a.py"],
+            ),
+            TaskInfo(
+                id="t2",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+                target_files=["app/schemas.py", "app/routers/b.py"],
+            ),
+        ]
+        batches = list(get_ready_batches(tasks))
+        assert len(batches) == 2
+        assert [t.id for t in batches[0]] == ["t1"]
+        assert [t.id for t in batches[1]] == ["t2"]
+
+    def test_disjoint_file_tasks_parallelize(self) -> None:
+        """Tasks claiming disjoint files still run in the same parallel batch."""
+        tasks = [
+            TaskInfo(
+                id="t1",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+                target_files=["app/routers/a.py"],
+            ),
+            TaskInfo(
+                id="t2",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+                target_files=["app/routers/b.py"],
+            ),
+        ]
+        batches = list(get_ready_batches(tasks))
+        assert len(batches) == 1
+        assert sorted(t.id for t in batches[0]) == ["t1", "t2"]
+
+    def test_missing_target_files_backward_compat(self) -> None:
+        """Tasks without target_files fall back to pre-fix parallel behavior."""
+        tasks = [
+            TaskInfo(
+                id="t1",
+                title="A",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+            ),
+            TaskInfo(
+                id="t2",
+                title="B",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+            ),
+        ]
+        batches = list(get_ready_batches(tasks))
+        assert len(batches) == 1
+        assert sorted(t.id for t in batches[0]) == ["t1", "t2"]
+
+    def test_mixed_partial_target_files_isolates_undeclared(self) -> None:
+        """A task with no target_files in a declared-batch runs alone first."""
+        tasks = [
+            TaskInfo(
+                id="unknown",
+                title="Unknown scope",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+            ),
+            TaskInfo(
+                id="known",
+                title="Known scope",
+                description="",
+                acceptance_criteria=[],
+                depends_on=[],
+                target_files=["app/routers/x.py"],
+            ),
+        ]
+        batches = list(get_ready_batches(tasks))
+        # Unknown-scope runs alone; known runs after.
+        assert len(batches) == 2
+        assert [t.id for t in batches[0]] == ["unknown"]
+        assert [t.id for t in batches[1]] == ["known"]
+
     def test_skip_completed_tasks(self) -> None:
         """Already-completed tasks are skipped when resuming."""
         tasks = [

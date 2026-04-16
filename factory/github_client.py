@@ -24,6 +24,7 @@ class SubTaskInfo:
     description: str
     acceptance_criteria: list[str]
     depends_on: list[str]
+    target_files: list[str] = field(default_factory=list)
     status: str = "pending"
     failure_issue: int | None = None
 
@@ -40,6 +41,7 @@ class TaskInfo:
     subtasks: list[SubTaskInfo] = field(default_factory=list)
     complexity: str = "medium"  # simple, medium, complex
     task_type: str = "feature"  # feature, migration, refactor, etc.
+    target_files: list[str] = field(default_factory=list)
     issue_number: int | None = None
     status: str = "pending"
     failure_issue: int | None = None

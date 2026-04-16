@@ -669,10 +669,51 @@ async def _process_task_with_guidance(
     LOG.error("Task '%s' still failing after retry.", task.title)
 
 
+def _partition_by_shared_files(
+    tasks: list[TaskInfo],
+) -> list[TaskInfo]:
+    """Pick the largest parallel-safe subset of a ready batch.
+
+    Tasks that declare overlapping `target_files` cannot run in parallel
+    worktrees without producing rebase conflicts. This greedily picks
+    tasks whose target_files are disjoint from already-chosen ones;
+    conflicting tasks stay in the remaining set and get yielded on a
+    subsequent iteration.
+
+    Backward compatibility: if no task in the batch declares any
+    `target_files`, the whole batch runs in parallel as before — pre-
+    fix tasks.json files without the field keep working.
+    """
+    if not any(t.target_files for t in tasks):
+        return list(tasks)
+
+    group: list[TaskInfo] = []
+    claimed: set[str] = set()
+    for t in tasks:
+        # A task that declares no target_files is treated as claiming
+        # everything — can't safely parallelize with anything else.
+        files = set(t.target_files) if t.target_files else {"*"}
+        if "*" in claimed:
+            continue
+        if files.isdisjoint(claimed) and "*" not in files:
+            group.append(t)
+            claimed |= files
+        elif not group and "*" in files:
+            # First task claims everything — runs alone this iteration.
+            group.append(t)
+            claimed = {"*"}
+    return group
+
+
 def get_ready_batches(
     tasks: list[TaskInfo],
 ) -> Generator[list[TaskInfo], None, None]:
-    """Yield batches of tasks whose dependencies are all complete."""
+    """Yield batches of tasks whose dependencies are all complete.
+
+    Within each dependency-ready set, tasks that declare overlapping
+    `target_files` are split across iterations so parallel worktrees
+    never touch the same files at the same time.
+    """
     completed: set[str] = set()
     remaining = list(tasks)
 
@@ -682,12 +723,13 @@ def get_ready_batches(
             remaining.remove(t)
 
     while remaining:
-        batch = [t for t in remaining if all(d in completed for d in t.depends_on)]
+        ready = [t for t in remaining if all(d in completed for d in t.depends_on)]
 
-        if not batch:
+        if not ready:
             pending_ids = [t.id for t in remaining]
             raise RuntimeError(f"Deadlock: no tasks ready. Remaining: {pending_ids}")
 
+        batch = _partition_by_shared_files(ready)
         yield batch
 
         for t in batch:
@@ -2094,6 +2136,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
                     description=s.get("description", ""),
                     acceptance_criteria=s.get("acceptance_criteria", []),
                     depends_on=s.get("depends_on", []),
+                    target_files=s.get("target_files", []),
                 )
             )
 
@@ -2107,6 +2150,7 @@ def _load_tasks(working_dir: str) -> list[TaskInfo]:
                 subtasks=subtasks,
                 complexity=t.get("complexity", "medium"),
                 task_type=t.get("type", "feature"),
+                target_files=t.get("target_files", []),
             )
         )
 

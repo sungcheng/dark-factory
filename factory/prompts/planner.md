@@ -54,7 +54,8 @@ Write a `tasks.json` file in the project root with this structure:
     ],
     "depends_on": [],
     "complexity": "simple",
-    "type": "feature"
+    "type": "feature",
+    "target_files": ["Makefile", "pyproject.toml", ".github/workflows/ci.yml"]
   },
   {
     "id": "task-2",
@@ -66,10 +67,17 @@ Write a `tasks.json` file in the project root with this structure:
     ],
     "depends_on": ["task-1"],
     "complexity": "medium",
-    "type": "feature"
+    "type": "feature",
+    "target_files": ["app/routers/items.py", "app/services/item_service.py"]
   }
 ]
 ```
+
+### target_files
+
+List every file the task will create or modify. The orchestrator uses this to decide which tasks can run in parallel: tasks with overlapping `target_files` are serialized to prevent rebase conflicts when parallel worktrees touch the same files. Omit files that are only read, not written.
+
+If two tasks in the same dependency batch both need to edit a shared file (e.g., `app/schemas.py`, `main.py`), list that file in both — the orchestrator will run them sequentially instead of in parallel.
 
 ## Task Type
 
