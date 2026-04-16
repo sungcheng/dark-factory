@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0] - 2026-04-16
+
+- feat: add Arbiter agent for QA/Dev deadlock resolution; clean up prescriptive prompts
+- feat: add YAML pipeline engine (Phase 1)
+- refactor: split bump and release back into separate workflows
+
+
 ## [0.8.0] - 2026-04-15
 
 - feat: add YAML pipeline engine (Phase 1)
