@@ -340,7 +340,8 @@ Handlers:
 - `subpipeline` — invoke another pipeline YAML as one node
 - `parallel` — fan out N sub-pipelines concurrently (`wait_for: all|any`)
 - `loop` — repeat a body pipeline until `exit_when` matches or `max_iterations` hits
-- `df_job` — drive a full Dark Factory job for one issue (Phase 3 bridge — wraps the legacy orchestrator)
+- `df_job` — Phase 3 bridge; wraps the legacy `run_job` in a single node (kept around for comparison testing)
+- Phase 4 stage handlers: `job_setup`, `clone_repo`, `preflight`, `pre_job_skills`, `regression_gate`, `architect`, `create_sub_issues`, `process_batches`, `post_merge_validation`, `qa_lead_review`, `post_job_skills`
 
 ### Running a DF job through the graph engine
 
@@ -348,7 +349,9 @@ Handlers:
 dark-factory start --repo akkio5 --issue 1 --engine graph
 ```
 
-The `--engine graph` flag routes the job through `pipelines/df_job.yaml` instead of calling `run_job` directly. Today that YAML has a single `df_job` node wrapping the legacy orchestrator. Phase 4 will decompose `run_job` into per-stage handlers (preflight, skills, architect, batch processing, validation) so the YAML becomes the authoritative flow and `orchestrator.py`'s pipeline logic can be retired.
+`--engine graph` routes through `pipelines/df_job.yaml`, which is now a multi-stage graph: each stage of what `run_job` used to do monolithically is its own node. Stages share state via `JobRuntime` stored in the PipelineContext. To build variants (hotfix that skips `regression_gate`, docs-only that skips `qa_lead_review`), copy the YAML and remove nodes.
+
+Phase 5 flips the default to graph, soaks on real jobs, then deletes the pipeline logic from `orchestrator.py`.
 
 Composition example (Phase 2):
 

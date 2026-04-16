@@ -935,8 +935,27 @@ The `orchestrator.py` is the current production path — a Python-defined pipeli
 
 - **Phase 1:** engine + standalone pipeline execution (shipped).
 - **Phase 2:** composition — `subpipeline`, `parallel`, `loop` (shipped).
-- **Phase 3:** `df_job` handler bridges the engine to `run_job`; `dark-factory start --engine graph` routes through `pipelines/df_job.yaml` (shipped). Single-node YAML today — no composability yet, but the plumbing is in place.
-- **Phase 4:** decompose `run_job` into per-stage handlers (preflight, pre-job skills, architect, batch processing, validation). YAML becomes the authoritative flow description; `orchestrator.py` keeps entry-point plumbing only.
+- **Phase 3:** `df_job` handler bridges the engine to `run_job`; `dark-factory start --engine graph` routes through `pipelines/df_job.yaml` (shipped).
+- **Phase 4:** `run_job` decomposed into 11 stage handlers sharing state via `JobRuntime`. YAML becomes the authoritative flow (shipped).
+- **Phase 5 (next):** validate Phase 4 on a real job, flip the default to graph, delete `run_job` + `retry_job` + inline pipeline logic from `orchestrator.py`.
+
+**Phase 4 stage handlers:**
+
+| Handler | Stage |
+|---|---|
+| `job_setup` | dashboard + health check + github client + emitter + state + fetch issue |
+| `clone_repo` | clone repo (if not resuming), write security policy |
+| `preflight` | guardrails, orphan/stale cleanup, tech-stack detection |
+| `pre_job_skills` | run `SkillPhase.PRE_JOB` skills, count tests for scope guard |
+| `regression_gate` | run existing tests (if any) as a gate on new work |
+| `architect` | spawn Architect, or fast-track simple issues |
+| `create_sub_issues` | dedupe, create/reuse GitHub sub-issues, reset failed tasks |
+| `process_batches` | the task-batch loop (worktrees for parallel, sequential otherwise) |
+| `post_merge_validation` | checkout main, pull, install deps, scope guard, secret scan, validation |
+| `qa_lead_review` | opus review of full codebase; commit improvements or revert |
+| `post_job_skills` | run `SkillPhase.POST_JOB` skills, commit updates |
+
+Each handler is a thin wrapper around existing helpers in `orchestrator.py` — the decomposition is a layering change, not a logic rewrite. `run_job` stays as `--engine=legacy` for one-flag bailout during validation; it gets deleted in Phase 5 once graph has soaked on real runs.
 
 ### GitHub Actions Workflows (for the dark-factory repo itself)
 

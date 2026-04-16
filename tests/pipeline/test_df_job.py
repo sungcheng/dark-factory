@@ -17,7 +17,7 @@ def test_df_job_handler_registered() -> None:
 
 
 def test_df_job_yaml_loads_with_expected_shape() -> None:
-    """The shipped pipeline YAML parses and has a single df_job node."""
+    """The shipped pipeline YAML parses and contains every Phase 4 stage."""
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -25,9 +25,22 @@ def test_df_job_yaml_loads_with_expected_shape() -> None:
     pipeline = Pipeline.from_yaml(str(yaml_path))
 
     assert pipeline.name == "df_job"
-    assert pipeline.start == "run_job"
-    assert len(pipeline.nodes) == 1
-    assert pipeline.nodes[0].handler == "df_job"
+    assert pipeline.start == "job_setup"
+    expected_handlers = {
+        "job_setup",
+        "clone_repo",
+        "preflight",
+        "pre_job_skills",
+        "regression_gate",
+        "architect",
+        "create_sub_issues",
+        "process_batches",
+        "post_merge_validation",
+        "qa_lead_review",
+        "post_job_skills",
+    }
+    actual_handlers = {n.handler for n in pipeline.nodes}
+    assert actual_handlers == expected_handlers
 
 
 @pytest.mark.anyio

@@ -1,26 +1,96 @@
-# Top-level Dark Factory job pipeline.
+# Top-level Dark Factory job pipeline (Phase 4 — decomposed).
 #
 #   dark-factory start --repo <repo> --issue <n> --engine=graph
 #
-# The CLI fills in repo_name / issue_number / model / merge_mode at
-# load time before invoking the engine — no template substitution is
-# done by the engine itself.
+# Each node corresponds to one stage of what `orchestrator.run_job`
+# used to do in monolithic Python. Edges express the flow; stages
+# share state through `JobRuntime` in `PipelineContext.state`. The
+# CLI fills repo_name/issue_number/model/merge_mode at load time.
 #
-# Phase 3: single df_job node wraps the legacy run_job orchestrator so
-# the engine can drive a real job end-to-end. Phase 4 will decompose
-# this into per-stage nodes (preflight, skills, architect, batch,
-# validation) so the YAML becomes the authoritative flow description
-# and the pipeline logic in orchestrator.py can be retired.
+# To build a variant (hotfix that skips regression_gate, docs-only
+# that skips qa_lead_review, etc.), copy this file and remove the
+# nodes you don't want.
 
 name: df_job
-description: Drive a single Dark Factory job for one GitHub issue
-start: run_job
+description: Decomposed Dark Factory job — one node per stage
+start: job_setup
 
 nodes:
-  - id: run_job
-    handler: df_job
+  - id: job_setup
+    handler: job_setup
     params:
       repo_name: ""
       issue_number: 0
       model: null
       merge_mode: auto
+
+  - id: clone_repo
+    handler: clone_repo
+
+  - id: preflight
+    handler: preflight
+
+  - id: pre_job_skills
+    handler: pre_job_skills
+
+  - id: regression_gate
+    handler: regression_gate
+
+  - id: architect
+    handler: architect
+
+  - id: create_sub_issues
+    handler: create_sub_issues
+
+  - id: process_batches
+    handler: process_batches
+
+  - id: post_merge_validation
+    handler: post_merge_validation
+    # Validation is gating — if it fails, skip QA Lead and post-job skills.
+    retry: { max: 1, on_exhausted: continue }
+
+  - id: qa_lead_review
+    handler: qa_lead_review
+
+  - id: post_job_skills
+    handler: post_job_skills
+
+edges:
+  - from: job_setup
+    to: clone_repo
+
+  - from: clone_repo
+    to: preflight
+
+  - from: preflight
+    to: pre_job_skills
+    when: status == "success"
+
+  - from: pre_job_skills
+    to: regression_gate
+
+  - from: regression_gate
+    to: architect
+    when: status == "success"
+
+  - from: architect
+    to: create_sub_issues
+    when: status == "success"
+
+  - from: create_sub_issues
+    to: process_batches
+
+  # Only proceed to validation/QA-Lead/post-skills when every task merged.
+  # If any task failed, process_batches returns status=failed; we stop
+  # here so the human can resolve before final review runs.
+  - from: process_batches
+    to: post_merge_validation
+    when: status == "success"
+
+  - from: post_merge_validation
+    to: qa_lead_review
+    when: status == "success"
+
+  - from: qa_lead_review
+    to: post_job_skills
