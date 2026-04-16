@@ -310,7 +310,7 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 
 Alongside the legacy `orchestrator.py`, Dark Factory has a YAML-defined graph execution engine. Pipelines are plain YAML files in `pipelines/`; the engine walks nodes through edges and dispatches each node to a handler in `factory/pipeline/handlers/`.
 
-Inspired by StrongDM's dark-factory approach — pipelines expressed as graphs, walked by a deterministic engine, with coding agents as pluggable handlers.
+Inspired by [StrongDM's software factory](https://www.strongdm.com/blog/the-strongdm-software-factory-building-software-with-ai) — pipelines expressed as graphs, walked by a deterministic engine, with coding agents as pluggable handlers.
 
 ```bash
 dark-factory run-pipeline pipelines/demo.yaml

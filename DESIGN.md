@@ -914,7 +914,7 @@ PHASE 4 — Kubernetes (Future)
 
 The `orchestrator.py` is the current production path — a Python-defined pipeline with fixed stages (Architect → Developer → QA). A parallel **graph-based engine** lives in `factory/pipeline/` and is being built out so future pipelines (hotfix, docs-only, security audit) can compose cleanly without growing the orchestrator.
 
-**Inspiration:** the graph-as-config approach is modeled after StrongDM's dark-factory approach — declarative pipeline graphs walked by a deterministic engine, with coding agents as pluggable handlers. Dark Factory's execution semantics differ (we keep hard permission boundaries + TDD red-green discipline), but the decision to lift pipeline definitions out of Python code and into data files came from studying their work.
+**Inspiration:** the graph-as-config approach is modeled after [StrongDM's software factory](https://www.strongdm.com/blog/the-strongdm-software-factory-building-software-with-ai) — declarative pipeline graphs walked by a deterministic engine, with coding agents as pluggable handlers. Dark Factory's execution semantics differ (we keep hard permission boundaries + TDD red-green discipline), but the decision to lift pipeline definitions out of Python code and into data files came from studying their work.
 
 **Architecture:**
 
