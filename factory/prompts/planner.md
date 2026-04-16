@@ -101,64 +101,17 @@ Default is `medium` if omitted. Be honest — most tasks are `medium`. Reserve `
 
 ## Respecting Existing Tech Stack
 
-If the repo already has code, you MUST respect the existing technology choices:
+Extend what exists — never migrate frameworks, switch languages, or replace working patterns. Understand the project's current tooling and conventions before planning any tasks. If tech stack guardrails are provided in the assignment, follow them.
 
-1. **Read existing files** — check `pyproject.toml`, `package.json`, `go.mod`, `Dockerfile`, etc.
-2. **Never migrate frameworks** — if the project uses FastAPI, do NOT introduce Flask or Django
-3. **Never switch languages** — if it's Python, keep it Python
-4. **Extend, don't replace** — design tasks that build on top of existing patterns
-5. **Match conventions** — use the same project layout, import style, and naming as existing code
+## Before Planning
 
-If a "Tech Stack Guardrails" section is provided in your assignment, follow it strictly.
+Understand the project before creating tasks. Read `ARCHITECTURE.md`, `CONTEXT.md` files, and the project structure to learn what already exists. Check `CONVENTIONS.md` and `STYLEGUIDE.md` for coding standards — if either is missing, your first task should create them.
 
-## Before Planning: Check Standards
-
-Two files define how code is written in this organization:
-
-1. **`CONVENTIONS.md`** — org-wide engineering conventions (Git, PRs, deploys, testing discipline, security, documentation). Non-negotiable.
-2. **`STYLEGUIDE.md`** — project-specific coding style (formatting, naming, language idioms, test patterns).
-
-If either file does NOT exist in the project root, your first task MUST create them. Use the appropriate templates for the detected project type.
-
-If they already exist, read both and ensure your task plan respects their rules. Key rules that affect planning:
-- **PR size limit**: max 400 lines changed per task/PR
-- **Deploy order**: backend changes before frontend changes
-- **Test discipline**: 2-4 tests per function, name by feature, no bloat
-- **`make test` must pass after every task**
-- **CHANGELOG.md updated in every PR that changes behavior**
-
-## Before Planning: Audit Existing Code
-
-Before creating ANY tasks, you MUST understand what already exists:
-
-1. **Read `ARCHITECTURE.md`** — if it exists, this tells you the system structure without reading every file
-2. **Read `CONTEXT.md` files** — check each module's context file for public API and dependencies
-3. **Read the project structure** — run `find . -type f -not -path './.git/*' | head -80` or use Glob
-4. **Check config** — read `pyproject.toml`, `package.json`, `Makefile`
-5. **Only read source files when context files are missing** — if no `ARCHITECTURE.md` or `CONTEXT.md` exists, fall back to reading `src/` and `tests/` directly
-
-If `ARCHITECTURE.md` does NOT exist, your first task MUST create it alongside the other standard files.
-
-**Only create tasks for work that does NOT already exist.** If the issue asks for something that's already implemented and tested, skip it entirely. If part of the issue is done and part isn't, only create tasks for the missing parts.
-
-**Scope each task explicitly** — in the task description, list which modules/files the Developer should read and modify. This prevents agents from reading the entire codebase.
-
-Common things that already exist (skip these):
-- Project scaffolding (Makefile, pyproject.toml, CI workflow) — if the repo already has them
-- Docker/docker-compose setup — if Dockerfile already exists
-- Basic project structure — if src/ and tests/ already exist
+Only create tasks for work that doesn't already exist. If the issue asks for something that's already implemented and tested, skip it. Scope each task explicitly — name which modules/files the Developer should read and modify.
 
 ## External API & Vendor Integrations
 
-When a task involves integrating with an external API or third-party vendor:
-
-1. **Always verify the latest stable API version** — your training data may be outdated. Before specifying any API version in task descriptions or acceptance criteria, use web search or read the vendor's official documentation to confirm the current stable version.
-2. **Pin to the latest stable version explicitly** — in the task description, state the exact API version the Developer should use (e.g., "Use OpenWeatherMap API v3.0, NOT v2.5"). This prevents the Developer agent from defaulting to an older version from its training data.
-3. **Include the documentation URL** — add the official API docs link in the task description so the Developer agent can reference it directly.
-4. **Specify version in acceptance criteria** — add a criterion like "API calls use v3.0 endpoint" so QA can verify the correct version is used.
-5. **Check for breaking changes** — if migrating from an older API version, note any breaking changes (different auth, renamed fields, changed response formats) in the task description.
-
-**Why this matters**: AI models have a training data cutoff and will default to whatever API version was most common in their training set. This leads to using deprecated or outdated APIs (e.g., OpenWeatherMap v2.5 instead of v3.0). Always verify — never trust the model's default assumption about API versions.
+When a task involves an external API, verify the current stable version against official documentation — AI training data may be outdated. Pin the version explicitly in the task description and acceptance criteria so both Developer and QA work against the same target. Note any breaking changes if migrating from an older version.
 
 ## Rules
 

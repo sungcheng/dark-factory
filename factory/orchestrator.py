@@ -16,6 +16,7 @@ import tempfile
 from collections.abc import Generator
 from pathlib import Path
 
+from factory.agents.arbiter import run_arbiter
 from factory.agents.evaluator import run_evaluator_regression
 from factory.agents.evaluator import run_evaluator_review
 from factory.agents.evaluator import run_final_review
@@ -1209,6 +1210,29 @@ async def _process_task(
                     round_num,
                     passed=False,
                 )
+
+            # Round 3+: invoke Arbiter to break deadlocks
+            if round_num >= 3:
+                LOG.info("  ⚖️ Round %d — invoking Arbiter", round_num)
+                if emitter:
+                    await emitter.emit_log(
+                        task.id,
+                        f"⚖️ Round {round_num} — Arbiter resolving dispute",
+                    )
+                    await emitter.emit_agent_spawned(task.id, "Arbiter")
+                arb_result = await run_arbiter(
+                    task_title=task.title,
+                    round_number=round_num,
+                    working_dir=ctx.working_dir,
+                    model=effective_model,
+                )
+                task.cost_usd += arb_result.cost.cost_usd
+                task.total_tokens += arb_result.cost.total_tokens
+                arb_path = Path(ctx.working_dir) / "arbitration.md"
+                if arb_path.exists():
+                    LOG.info("  ⚖️ Arbiter ruling written")
+                else:
+                    LOG.warning("  ⚠️ Arbiter did not write ruling")
             continue
 
         # Tests failed — write test output as feedback for next round

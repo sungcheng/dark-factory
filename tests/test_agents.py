@@ -91,7 +91,7 @@ class TestLoadPrompt:
         """Generator prompt loads and contains key instructions."""
         prompt = load_prompt("generator")
         assert "Developer" in prompt
-        assert "Write tests" in prompt
+        assert "write tests" in prompt.lower()
         assert "make test" in prompt
 
     def test_load_nonexistent_raises(self) -> None:

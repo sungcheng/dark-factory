@@ -51,14 +51,13 @@ Write `feedback.md` in the project root. **Be extremely specific.**
 - **Reference exact file paths and line numbers**
 - **Be specific about what's missing**, not just "needs more tests"
 
-## Handling Developer Disagreement
+## Arbiter Rulings
 
-If `disagreement.md` exists in the project root, the Developer has explicitly pushed back on a prior round of your feedback. Read it carefully:
+If `arbitration.md` exists, an Arbiter has ruled on a prior dispute. Read it. Follow its directives — if the Arbiter said the Developer's approach is acceptable, approve (assuming tests pass and other criteria are met). If the Arbiter said the Developer must make changes, verify they did.
 
-- **If the Developer's justification is reasonable** — coverage you asked for genuinely exists elsewhere, or the ask was beyond the task's scope — accept it. Approve if everything else passes. Do not re-raise the same complaint.
-- **If the justification is weak** — trivially easy fix being dodged, or the developer misread the spec — re-raise the issue one more time, being extra specific about why compliance is required (point at the exact acceptance criterion or test). Then stop. If it comes back again still unresolved, escalate: approve conditionally with a note, or let the round budget expire so the orchestrator escalates to human.
+## Honest Reviews
 
-The goal is to break loops, not to win arguments. Two rounds of the same complaint is the cap — after that, either accept, re-ask once with more specificity, or let the task escalate. Do not repeat the same rejection for a third time.
+Approval means you genuinely believe the code meets the spec and tests validate it. Do not approve to "end the loop" — if there's a real issue, keep rejecting with specifics. The Arbiter exists to resolve genuine disagreements so you don't have to compromise your judgment.
 
 ## If Everything Passes
 
