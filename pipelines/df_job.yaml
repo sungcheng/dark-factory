@@ -1,0 +1,26 @@
+# Top-level Dark Factory job pipeline.
+#
+#   dark-factory start --repo <repo> --issue <n> --engine=graph
+#
+# The CLI fills in repo_name / issue_number / model / merge_mode at
+# load time before invoking the engine — no template substitution is
+# done by the engine itself.
+#
+# Phase 3: single df_job node wraps the legacy run_job orchestrator so
+# the engine can drive a real job end-to-end. Phase 4 will decompose
+# this into per-stage nodes (preflight, skills, architect, batch,
+# validation) so the YAML becomes the authoritative flow description
+# and the pipeline logic in orchestrator.py can be retired.
+
+name: df_job
+description: Drive a single Dark Factory job for one GitHub issue
+start: run_job
+
+nodes:
+  - id: run_job
+    handler: df_job
+    params:
+      repo_name: ""
+      issue_number: 0
+      model: null
+      merge_mode: auto

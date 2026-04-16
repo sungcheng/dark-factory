@@ -935,7 +935,8 @@ The `orchestrator.py` is the current production path — a Python-defined pipeli
 
 - **Phase 1:** engine + standalone pipeline execution (shipped).
 - **Phase 2:** composition — `subpipeline`, `parallel`, `loop` (shipped).
-- **Phase 3:** migrate DF's own job flow onto a pipeline YAML; delete the pipeline logic from `orchestrator.py`.
+- **Phase 3:** `df_job` handler bridges the engine to `run_job`; `dark-factory start --engine graph` routes through `pipelines/df_job.yaml` (shipped). Single-node YAML today — no composability yet, but the plumbing is in place.
+- **Phase 4:** decompose `run_job` into per-stage handlers (preflight, pre-job skills, architect, batch processing, validation). YAML becomes the authoritative flow description; `orchestrator.py` keeps entry-point plumbing only.
 
 ### GitHub Actions Workflows (for the dark-factory repo itself)
 

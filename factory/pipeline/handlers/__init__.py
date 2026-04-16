@@ -10,6 +10,7 @@ handler type = one file in this directory + one entry in HANDLERS.
 from __future__ import annotations
 
 from factory.pipeline.handlers.agent import agent_handler
+from factory.pipeline.handlers.df_job import df_job_handler
 from factory.pipeline.handlers.loop import loop_handler
 from factory.pipeline.handlers.parallel import parallel_handler
 from factory.pipeline.handlers.shell import shell_handler
@@ -18,6 +19,7 @@ from factory.pipeline.handlers.subpipeline import subpipeline_handler
 
 HANDLERS = {
     "agent": agent_handler,
+    "df_job": df_job_handler,
     "loop": loop_handler,
     "parallel": parallel_handler,
     "shell": shell_handler,

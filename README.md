@@ -340,6 +340,15 @@ Handlers:
 - `subpipeline` — invoke another pipeline YAML as one node
 - `parallel` — fan out N sub-pipelines concurrently (`wait_for: all|any`)
 - `loop` — repeat a body pipeline until `exit_when` matches or `max_iterations` hits
+- `df_job` — drive a full Dark Factory job for one issue (Phase 3 bridge — wraps the legacy orchestrator)
+
+### Running a DF job through the graph engine
+
+```bash
+dark-factory start --repo akkio5 --issue 1 --engine graph
+```
+
+The `--engine graph` flag routes the job through `pipelines/df_job.yaml` instead of calling `run_job` directly. Today that YAML has a single `df_job` node wrapping the legacy orchestrator. Phase 4 will decompose `run_job` into per-stage handlers (preflight, skills, architect, batch processing, validation) so the YAML becomes the authoritative flow and `orchestrator.py`'s pipeline logic can be retired.
 
 Composition example (Phase 2):
 

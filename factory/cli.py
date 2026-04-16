@@ -40,31 +40,89 @@ def main(verbose: bool) -> None:
     default="auto",
     help="auto: merge PRs immediately. manual: wait for human merge.",
 )
-def start(repo: str, issue: int, model: str | None, merge_mode: str) -> None:
+@click.option(
+    "--engine",
+    type=click.Choice(["legacy", "graph"]),
+    default="legacy",
+    help="legacy: run_job directly. graph: route through pipelines/df_job.yaml.",
+)
+def start(
+    repo: str,
+    issue: int,
+    model: str | None,
+    merge_mode: str,
+    engine: str,
+) -> None:
     """Start a factory job for a single GitHub issue.
 
     Example:
         dark-factory start --repo weather-api --issue 1
         dark-factory start --repo weather-api --issue 1 --merge-mode manual
+        dark-factory start --repo weather-api --issue 1 --engine graph
     """
-    from factory.orchestrator import run_job
-
     click.echo(f"Starting Dark Factory job for {repo}#{issue}")
     if merge_mode == "manual":
         click.echo("  Merge mode: MANUAL — PRs require human merge")
+    if engine == "graph":
+        click.echo("  Engine: GRAPH — routing through pipelines/df_job.yaml")
+
     try:
-        asyncio.run(
-            run_job(
-                repo_name=repo,
-                issue_number=issue,
-                model=model,
-                merge_mode=merge_mode,
+        if engine == "graph":
+            asyncio.run(
+                _run_via_graph_engine(
+                    repo=repo,
+                    issue=issue,
+                    model=model,
+                    merge_mode=merge_mode,
+                )
             )
-        )
+        else:
+            from factory.orchestrator import run_job
+
+            asyncio.run(
+                run_job(
+                    repo_name=repo,
+                    issue_number=issue,
+                    model=model,
+                    merge_mode=merge_mode,
+                )
+            )
         click.echo("Job completed successfully.")
     except Exception as e:
         click.echo(f"Job failed: {e}", err=True)
         sys.exit(1)
+
+
+async def _run_via_graph_engine(
+    repo: str,
+    issue: int,
+    model: str | None,
+    merge_mode: str,
+) -> None:
+    """Route a DF job through the YAML-defined pipeline engine."""
+    from pathlib import Path
+
+    from factory.pipeline.engine import PipelineContext
+    from factory.pipeline.engine import run_pipeline
+    from factory.pipeline.schema import Pipeline
+
+    yaml_path = Path(__file__).parent.parent / "pipelines" / "df_job.yaml"
+    pipeline = Pipeline.from_yaml(str(yaml_path))
+
+    # The YAML carries placeholder params; override with runtime values.
+    for node in pipeline.nodes:
+        if node.handler == "df_job":
+            node.params["repo_name"] = repo
+            node.params["issue_number"] = issue
+            node.params["model"] = model
+            node.params["merge_mode"] = merge_mode
+
+    ctx = PipelineContext(
+        working_dir=str(Path.cwd()),
+        repo_name=repo,
+        issue_number=issue,
+    )
+    await run_pipeline(pipeline, ctx)
 
 
 @main.command()
