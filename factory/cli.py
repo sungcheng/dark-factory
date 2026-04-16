@@ -109,9 +109,11 @@ async def _run_via_graph_engine(
     yaml_path = Path(__file__).parent.parent / "pipelines" / "df_job.yaml"
     pipeline = Pipeline.from_yaml(str(yaml_path))
 
-    # The YAML carries placeholder params; override with runtime values.
+    # The YAML carries placeholder params on the entry node; override
+    # with runtime values. Matches either the Phase 3 bridge (`df_job`)
+    # or the Phase 4 decomposed pipeline (`job_setup`).
     for node in pipeline.nodes:
-        if node.handler == "df_job":
+        if node.handler in ("df_job", "job_setup"):
             node.params["repo_name"] = repo
             node.params["issue_number"] = issue
             node.params["model"] = model
