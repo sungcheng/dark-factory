@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.0] - 2026-04-16
+
+- feat: pipeline engine Phase 3 — df_job handler + --engine=graph CLI flag
+
+
 ## [0.10.1] - 2026-04-16
 
 - fix: serialize parallel tasks that share target files (closes #42)
