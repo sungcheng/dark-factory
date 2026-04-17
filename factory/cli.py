@@ -40,53 +40,31 @@ def main(verbose: bool) -> None:
     default="auto",
     help="auto: merge PRs immediately. manual: wait for human merge.",
 )
-@click.option(
-    "--engine",
-    type=click.Choice(["legacy", "graph"]),
-    default="legacy",
-    help="legacy: run_job directly. graph: route through pipelines/df_job.yaml.",
-)
 def start(
     repo: str,
     issue: int,
     model: str | None,
     merge_mode: str,
-    engine: str,
 ) -> None:
     """Start a factory job for a single GitHub issue.
 
     Example:
         dark-factory start --repo weather-api --issue 1
         dark-factory start --repo weather-api --issue 1 --merge-mode manual
-        dark-factory start --repo weather-api --issue 1 --engine graph
     """
     click.echo(f"Starting Dark Factory job for {repo}#{issue}")
     if merge_mode == "manual":
         click.echo("  Merge mode: MANUAL — PRs require human merge")
-    if engine == "graph":
-        click.echo("  Engine: GRAPH — routing through pipelines/df_job.yaml")
 
     try:
-        if engine == "graph":
-            asyncio.run(
-                _run_via_graph_engine(
-                    repo=repo,
-                    issue=issue,
-                    model=model,
-                    merge_mode=merge_mode,
-                )
+        asyncio.run(
+            _run_via_graph_engine(
+                repo=repo,
+                issue=issue,
+                model=model,
+                merge_mode=merge_mode,
             )
-        else:
-            from factory.orchestrator import run_job
-
-            asyncio.run(
-                run_job(
-                    repo_name=repo,
-                    issue_number=issue,
-                    model=model,
-                    merge_mode=merge_mode,
-                )
-            )
+        )
         click.echo("Job completed successfully.")
     except Exception as e:
         click.echo(f"Job failed: {e}", err=True)
@@ -109,11 +87,10 @@ async def _run_via_graph_engine(
     yaml_path = Path(__file__).parent.parent / "pipelines" / "df_job.yaml"
     pipeline = Pipeline.from_yaml(str(yaml_path))
 
-    # The YAML carries placeholder params on the entry node; override
-    # with runtime values. Matches either the Phase 3 bridge (`df_job`)
-    # or the Phase 4 decomposed pipeline (`job_setup`).
+    # The YAML carries placeholder params on the job_setup node; override
+    # with runtime values before running.
     for node in pipeline.nodes:
-        if node.handler in ("df_job", "job_setup"):
+        if node.handler == "job_setup":
             node.params["repo_name"] = repo
             node.params["issue_number"] = issue
             node.params["model"] = model

@@ -309,7 +309,7 @@ Agents run with a security policy written to the target repo's CLAUDE.md:
 
 ## Pipeline Engine
 
-Alongside the legacy `orchestrator.py`, Dark Factory has a YAML-defined graph execution engine. Pipelines are plain YAML files in `pipelines/`; the engine walks nodes through edges and dispatches each node to a handler in `factory/pipeline/handlers/`.
+Dark Factory's job flow is defined as a YAML pipeline in `pipelines/df_job.yaml` and driven by a graph execution engine in `factory/pipeline/`. There is no longer a monolithic Python orchestrator — `dark-factory start` routes through the engine. Each stage of a DF job is a node in the graph, dispatched to a handler in `factory/pipeline/handlers/`.
 
 Inspired by [StrongDM's software factory](https://www.strongdm.com/blog/the-strongdm-software-factory-building-software-with-ai) — pipelines expressed as graphs, walked by a deterministic engine, with coding agents as pluggable handlers.
 
@@ -344,17 +344,17 @@ Handlers:
 - `parallel` — fan out N sub-pipelines concurrently (`wait_for: all|any`)
 - `loop` — repeat a body pipeline until `exit_when` matches or `max_iterations` hits
 - `df_job` — Phase 3 bridge; wraps the legacy `run_job` in a single node (kept around for comparison testing)
-- Phase 4 stage handlers: `job_setup`, `clone_repo`, `preflight`, `pre_job_skills`, `regression_gate`, `architect`, `create_sub_issues`, `process_batches`, `post_merge_validation`, `qa_lead_review`, `post_job_skills`
+- Stage handlers (the decomposed Dark Factory flow): `job_setup`, `clone_repo`, `preflight`, `pre_job_skills`, `regression_gate`, `architect`, `create_sub_issues`, `process_batches`, `post_merge_validation`, `qa_lead_review`, `post_job_skills`
 
-### Running a DF job through the graph engine
+### Building pipeline variants
+
+To build a hotfix flow that skips `regression_gate`, a docs-only flow that skips `qa_lead_review`, or a security-audit flow that inserts a scan between `architect` and `process_batches`, copy `pipelines/df_job.yaml`, remove or insert nodes, and run:
 
 ```bash
-dark-factory start --repo akkio5 --issue 1 --engine graph
+dark-factory run-pipeline pipelines/df_hotfix.yaml
 ```
 
-`--engine graph` routes through `pipelines/df_job.yaml`, which is now a multi-stage graph: each stage of what `run_job` used to do monolithically is its own node. Stages share state via `JobRuntime` stored in the PipelineContext. To build variants (hotfix that skips `regression_gate`, docs-only that skips `qa_lead_review`), copy the YAML and remove nodes.
-
-Phase 5 flips the default to graph, soaks on real jobs, then deletes the pipeline logic from `orchestrator.py`.
+No Python changes needed — pipelines are data files; handlers are the only code.
 
 Composition example (Phase 2):
 

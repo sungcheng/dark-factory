@@ -937,9 +937,10 @@ The `orchestrator.py` is the current production path — a Python-defined pipeli
 
 - **Phase 1:** engine + standalone pipeline execution (shipped).
 - **Phase 2:** composition — `subpipeline`, `parallel`, `loop` (shipped).
-- **Phase 3:** `df_job` handler bridges the engine to `run_job`; `dark-factory start --engine graph` routes through `pipelines/df_job.yaml` (shipped).
-- **Phase 4:** `run_job` decomposed into 11 stage handlers sharing state via `JobRuntime`. YAML becomes the authoritative flow (shipped).
-- **Phase 5 (next):** validate Phase 4 on a real job, flip the default to graph, delete `run_job` + `retry_job` + inline pipeline logic from `orchestrator.py`.
+- **Phase 3:** `df_job` handler bridges the engine to `run_job`; `dark-factory start --engine graph` routes through `pipelines/df_job.yaml` (shipped, later removed in Phase 5).
+- **Phase 4:** `run_job` decomposed into 11 stage handlers sharing state via `JobRuntime`. YAML becomes the authoritative flow (shipped, validated on akkio5: 6/7 tasks merged including a real-world Arbiter intervention).
+- **Phase 5:** `run_job` and the `--engine` flag deleted. Graph engine is now the only path — `dark-factory start` routes unconditionally through the YAML pipeline (shipped).
+- **Phase 6 (next):** migrate `retry_job` onto a `pipelines/df_retry.yaml`, delete the remaining legacy retry flow. Then add eval infrastructure.
 
 **Phase 4 stage handlers:**
 

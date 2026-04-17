@@ -697,9 +697,17 @@ class TestOrchestratorIntegration:
     """factory.orchestrator must import and use EventEmitter at lifecycle points."""
 
     def _get_orchestrator_source(self) -> str:
-        import factory.orchestrator as orch
+        """Concatenated source of every module that emits job/task events.
 
-        return inspect.getsource(orch)
+        Phase 5 split `run_job` into per-stage handlers in
+        `factory/pipeline/handlers/stages.py`. The emitter plumbing now
+        lives there — these assertions treat orchestrator + stages as a
+        single logical layer.
+        """
+        import factory.orchestrator as orch
+        import factory.pipeline.handlers.stages as stages
+
+        return inspect.getsource(orch) + "\n\n" + inspect.getsource(stages)
 
     def test_orchestrator_imports_event_emitter(self) -> None:
         """factory.orchestrator must import EventEmitter."""

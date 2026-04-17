@@ -105,7 +105,7 @@ async def preflight_handler(node: Node, ctx: PipelineContext) -> NodeResult:
     """Run pre-flight guardrails and cleanup orphaned artifacts."""
     from factory.guardrails import format_secret_findings
     from factory.guardrails import run_preflight_checks
-    from factory.orchestrator import cleanup_stale_state_files
+    from factory.state import cleanup_stale_state_files
 
     r = get_runtime(ctx.state)
     assert r.ctx and r.github and r.emitter
@@ -147,7 +147,7 @@ async def preflight_handler(node: Node, ctx: PipelineContext) -> NodeResult:
 
 async def pre_job_skills_handler(node: Node, ctx: PipelineContext) -> NodeResult:
     """Run pre-job skills (codebase profile, standards bootstrap, etc.)."""
-    from factory.orchestrator import count_tests
+    from factory.guardrails import count_tests
     from factory.skills.base import SkillContext
     from factory.skills.base import SkillPhase
     from factory.skills.registry import run_phase
@@ -358,6 +358,14 @@ async def process_batches_handler(node: Node, ctx: PipelineContext) -> NodeResul
 
     completed = [t for t in r.ctx.tasks if t.status == "completed"]
     failed = [t for t in r.ctx.tasks if t.status == "failed"]
+    if failed:
+        await r.emitter.emit_job_failed(r.repo_name, r.issue_number)
+        LOG.warning(
+            "⏸️ Job paused. %d/%d completed, %d failed.",
+            len(completed),
+            len(r.ctx.tasks),
+            len(failed),
+        )
     status = "failed" if failed else "success"
     return NodeResult(
         status=status,
